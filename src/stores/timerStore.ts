@@ -419,7 +419,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                 get().computeStudyStats();
                 await get().syncWithSupabase();
             }
-        }, 30000);
+        }, 3000); // 3 saniye - anlık güncelleme
 
         set({ _syncInterval: interval } as any);
     },
