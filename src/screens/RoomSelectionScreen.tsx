@@ -368,12 +368,14 @@ const styles = StyleSheet.create({
         gap: Spacing.md,
     },
     roomActions: {
-        flexDirection: 'row',
+        flexDirection: 'column',
         gap: Spacing.xs,
-        alignItems: 'center',
+    },
+    joinButton: {
+        width: '100%',
     },
     deleteButton: {
-        minWidth: 70,
+        width: '100%',
     },
     roomInfo: {
         flexDirection: 'row',
@@ -409,9 +411,6 @@ const styles = StyleSheet.create({
         fontFamily: Fonts.body.semibold,
         fontSize: FontSize.caption1,
         color: Colors.systemGreen,
-    },
-    joinButton: {
-        width: '100%',
     },
     createButton: {
         marginBottom: Spacing.md,
