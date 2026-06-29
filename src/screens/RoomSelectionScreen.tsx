@@ -15,6 +15,7 @@ import {
     KeyboardAvoidingView,
     Platform,
     Pressable,
+    Alert,
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { Fonts, FontSize } from '../theme/typography';
@@ -27,6 +28,7 @@ import { Room } from '../types';
 
 export function RoomSelectionScreen() {
     const user = useAuthStore((s) => s.user);
+    const profile = useAuthStore((s) => s.profile);
     const {
         rooms,
         isLoading,
@@ -34,6 +36,7 @@ export function RoomSelectionScreen() {
         loadRooms,
         join,
         create,
+        delete: deleteRoomAction,
         subscribeToRooms,
         clearError,
     } = useRoomStore();
@@ -44,6 +47,7 @@ export function RoomSelectionScreen() {
     const [creatingRoom, setCreatingRoom] = useState(false);
     const [joiningRoomId, setJoiningRoomId] = useState<string | null>(null);
     const [createError, setCreateError] = useState<string | null>(null);
+    const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
 
     useEffect(() => {
         loadRooms();
@@ -88,6 +92,30 @@ export function RoomSelectionScreen() {
             setCreateError(err.message || 'Oda oluşturulamadı');
         }
         setCreatingRoom(false);
+    };
+
+    const handleDelete = (roomId: string, roomName: string) => {
+        Alert.alert(
+            'Odayı Sil',
+            `"${roomName}" odasını silmek istediğine emin misin? Bu işlem geri alınamaz.`,
+            [
+                { text: 'Vazgeç', style: 'cancel' },
+                {
+                    text: 'Sil',
+                    style: 'destructive',
+                    onPress: async () => {
+                        if (!user) return;
+                        setDeletingRoomId(roomId);
+                        try {
+                            await deleteRoomAction(user.id, roomId);
+                        } catch (err) {
+                            // Hata roomStore'da set ediliyor
+                        }
+                        setDeletingRoomId(null);
+                    },
+                },
+            ]
+        );
     };
 
     return (
@@ -150,46 +178,63 @@ export function RoomSelectionScreen() {
                         <>
                             {/* Oda Listesi */}
                             <View style={styles.roomList}>
-                                {rooms.map((room: Room) => (
-                                    <AppleCard
-                                        key={room.id}
-                                        style={styles.roomCard}
-                                        variant="grouped"
-                                    >
-                                        <View style={styles.roomInfo}>
-                                            <View style={styles.roomText}>
-                                                <Text style={styles.roomName}>
-                                                    {room.name}
-                                                </Text>
-                                                {room.description ? (
-                                                    <Text style={styles.roomDescription}>
-                                                        {room.description}
+                                {rooms.map((room: Room) => {
+                                    const isCreator = profile?.username === room.creator_username;
+                                    const isDeleting = deletingRoomId === room.id;
+
+                                    return (
+                                        <AppleCard
+                                            key={room.id}
+                                            style={styles.roomCard}
+                                            variant="grouped"
+                                        >
+                                            <View style={styles.roomInfo}>
+                                                <View style={styles.roomText}>
+                                                    <Text style={styles.roomName}>
+                                                        {room.name}
                                                     </Text>
-                                                ) : null}
+                                                    {room.description ? (
+                                                        <Text style={styles.roomDescription}>
+                                                            {room.description}
+                                                        </Text>
+                                                    ) : null}
+                                                </View>
+                                                <View style={styles.roomStats}>
+                                                    <Text style={styles.memberCount}>
+                                                        👥 {room.member_count ?? 0}
+                                                    </Text>
+                                                    <Text style={styles.activeCount}>
+                                                        🟢 {(room.active_member_count ?? 0)} aktif
+                                                    </Text>
+                                                </View>
                                             </View>
-                                            <View style={styles.roomStats}>
-                                                <Text style={styles.memberCount}>
-                                                    👥 {room.member_count ?? 0}
-                                                </Text>
-                                                <Text style={styles.activeCount}>
-                                                    🟢 {(room.active_member_count ?? 0)} aktif
-                                                </Text>
+                                            <View style={styles.roomActions}>
+                                                <AppleButton
+                                                    title={
+                                                        joiningRoomId === room.id
+                                                            ? 'Katılıyor...'
+                                                            : 'Katıl'
+                                                    }
+                                                    onPress={() => handleJoin(room.id)}
+                                                    variant="primary"
+                                                    size="medium"
+                                                    disabled={joiningRoomId !== null || isDeleting}
+                                                    style={styles.joinButton}
+                                                />
+                                                {isCreator && (
+                                                    <AppleButton
+                                                        title={isDeleting ? 'Siliniyor...' : '🗑 Sil'}
+                                                        onPress={() => handleDelete(room.id, room.name)}
+                                                        variant="destructive"
+                                                        size="small"
+                                                        disabled={isDeleting}
+                                                        style={styles.deleteButton}
+                                                    />
+                                                )}
                                             </View>
-                                        </View>
-                                        <AppleButton
-                                            title={
-                                                joiningRoomId === room.id
-                                                    ? 'Katılıyor...'
-                                                    : 'Katıl'
-                                            }
-                                            onPress={() => handleJoin(room.id)}
-                                            variant="primary"
-                                            size="medium"
-                                            disabled={joiningRoomId !== null}
-                                            style={styles.joinButton}
-                                        />
-                                    </AppleCard>
-                                ))}
+                                        </AppleCard>
+                                    );
+                                })}
                             </View>
 
                         </>
@@ -321,6 +366,14 @@ const styles = StyleSheet.create({
     },
     roomCard: {
         gap: Spacing.md,
+    },
+    roomActions: {
+        flexDirection: 'row',
+        gap: Spacing.xs,
+        alignItems: 'center',
+    },
+    deleteButton: {
+        minWidth: 70,
     },
     roomInfo: {
         flexDirection: 'row',

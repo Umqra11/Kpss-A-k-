@@ -88,7 +88,16 @@ export function MainScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
+            {/* Milestone Popup */}
+            {lastMilestonePopup && <MilestonePopup />}
+
+            {/* Üst içerik — kaydırılabilir */}
+            <ScrollView
+                style={styles.scrollArea}
+                contentContainerStyle={styles.scrollContent}
+                bounces={false}
+                showsVerticalScrollIndicator={false}
+            >
                 {/* Header */}
                 <View style={styles.header}>
                     <View style={styles.headerLeft}>
@@ -142,52 +151,52 @@ export function MainScreen() {
                     </AppleCard>
                 )}
 
-                {/* Kontrol Butonları */}
-                <View style={styles.controlRow}>
-                    {/* Çalışmayı Bitir butonu - sadece running/paused durumunda */}
-                    {(status === 'running' || status === 'paused') && (
-                        <AppleButton
-                            title="⏹ Çalışmayı Bitir"
-                            onPress={handleStopAndSubmit}
-                            variant="destructive"
-                            size="medium"
-                            style={styles.stopButton}
-                        />
-                    )}
-
-                    {/* Ana buton */}
-                    {status === 'idle' && (
-                        <AppleButton
-                            title="▶ Başlat"
-                            onPress={handleMainButton}
-                            variant="primary"
-                            size="large"
-                            style={styles.mainButton}
-                        />
-                    )}
-                    {status === 'running' && (
-                        <AppleButton
-                            title="⏸ Duraklat"
-                            onPress={handleMainButton}
-                            variant="secondary"
-                            size="large"
-                            style={styles.mainButton}
-                        />
-                    )}
-                    {status === 'paused' && (
-                        <AppleButton
-                            title="▶ Devam"
-                            onPress={handleMainButton}
-                            variant="primary"
-                            size="large"
-                            style={styles.mainButton}
-                        />
-                    )}
-                </View>
+                {/* Alt boşluk — butonların içeriği örtmemesi için */}
+                <View style={styles.bottomSpacer} />
             </ScrollView>
 
-            {/* Milestone Popup */}
-            {lastMilestonePopup && <MilestonePopup />}
+            {/* Kontrol Butonları — her zaman ekranın altında sabit */}
+            <View style={styles.controlBar}>
+                {/* Çalışmayı Bitir butonu - sadece running/paused durumunda */}
+                {(status === 'running' || status === 'paused') && (
+                    <AppleButton
+                        title="⏹ Çalışmayı Bitir"
+                        onPress={handleStopAndSubmit}
+                        variant="destructive"
+                        size="medium"
+                        style={styles.stopButton}
+                    />
+                )}
+
+                {/* Ana buton */}
+                {status === 'idle' && (
+                    <AppleButton
+                        title="▶ Başlat"
+                        onPress={handleMainButton}
+                        variant="primary"
+                        size="large"
+                        style={styles.mainButton}
+                    />
+                )}
+                {status === 'running' && (
+                    <AppleButton
+                        title="⏸ Duraklat"
+                        onPress={handleMainButton}
+                        variant="secondary"
+                        size="large"
+                        style={styles.mainButton}
+                    />
+                )}
+                {status === 'paused' && (
+                    <AppleButton
+                        title="▶ Devam"
+                        onPress={handleMainButton}
+                        variant="primary"
+                        size="large"
+                        style={styles.mainButton}
+                    />
+                )}
+            </View>
         </SafeAreaView>
     );
 }
@@ -197,14 +206,23 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.systemBackground,
     },
+    scrollArea: {
+        flex: 1,
+    },
     scrollContent: {
         flexGrow: 1,
         paddingHorizontal: Spacing.xl,
         paddingTop: Spacing.md,
-        paddingBottom: 40,
         alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100%',
+    },
+    bottomSpacer: {
+        height: 100,
+    },
+    controlBar: {
+        paddingHorizontal: Spacing.xl,
+        paddingBottom: Spacing.md,
+        paddingTop: Spacing.xs,
+        backgroundColor: Colors.systemBackground,
     },
     header: {
         flexDirection: 'row',

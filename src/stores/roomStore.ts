@@ -12,6 +12,7 @@ import {
     joinRoom,
     leaveRoom,
     createRoom,
+    deleteRoom,
 } from '../services/supabase';
 
 interface RoomState {
@@ -24,6 +25,7 @@ interface RoomState {
     join: (userId: string, roomId: string) => Promise<void>;
     leave: (userId: string) => Promise<void>;
     create: (userId: string, name: string, description?: string) => Promise<Room>;
+    delete: (userId: string, roomId: string) => Promise<void>;
     setCurrentRoomId: (roomId: string | null) => void;
     subscribeToRooms: () => () => void;
     clearError: () => void;
@@ -51,11 +53,17 @@ export const useRoomStore = create<RoomState>((set, get) => ({
     join: async (userId: string, roomId: string) => {
         set({ error: null });
         try {
+            // Eğer zaten bir odadaysak, önce o odanın sürelerini kaydedip ayrılalım
+            const { useAuthStore } = await import('./authStore');
+            const profile = useAuthStore.getState().profile;
+            if (profile?.current_room_id && profile.current_room_id !== roomId) {
+                await get().leave(userId);
+            }
+
             await joinRoom(userId, roomId);
             set({ currentRoomId: roomId });
 
             // Auth store'daki profili güncelle
-            const { useAuthStore } = await import('./authStore');
             await useAuthStore.getState().refreshProfile();
 
             // Odaları yeniden yükle (üye sayıları değişti)
@@ -69,12 +77,26 @@ export const useRoomStore = create<RoomState>((set, get) => ({
     leave: async (userId: string) => {
         set({ error: null });
         try {
-            await leaveRoom(userId);
+            // Timer store'dan şu anki oda bazlı süreleri al
+            const { useTimerStore } = await import('./timerStore');
+            const timerState = useTimerStore.getState();
+            const weeklySeconds = timerState.weeklyStudySeconds;
+            const totalSeconds = timerState.totalStudySeconds;
+
+            await leaveRoom(userId, weeklySeconds, totalSeconds);
             set({ currentRoomId: null });
 
             // Auth store'daki profili güncelle
             const { useAuthStore } = await import('./authStore');
             await useAuthStore.getState().refreshProfile();
+
+            // Timer state'ini sıfırla (oda bazlı süreler)
+            useTimerStore.setState({
+                dailyStudySeconds: 0,
+                weeklyStudySeconds: 0,
+                totalStudySeconds: 0,
+                _lastSyncedElapsedMs: 0,
+            });
 
             // Odaları yeniden yükle
             await get().loadRooms();
@@ -87,6 +109,13 @@ export const useRoomStore = create<RoomState>((set, get) => ({
     create: async (userId: string, name: string, description?: string) => {
         set({ error: null });
         try {
+            // Eğer zaten bir odadaysak, önce o odanın sürelerini kaydedip ayrılalım
+            const { useAuthStore } = await import('./authStore');
+            const profile = useAuthStore.getState().profile;
+            if (profile?.current_room_id) {
+                await get().leave(userId);
+            }
+
             const newRoom = await createRoom(userId, name, description);
 
             // Odaları yeniden yükle
@@ -96,7 +125,6 @@ export const useRoomStore = create<RoomState>((set, get) => ({
             set({ currentRoomId: newRoom.id });
 
             // Auth store'daki profili güncelle
-            const { useAuthStore } = await import('./authStore');
             await useAuthStore.getState().refreshProfile();
 
             // Odayı Room tipinde döndür (tam olarak)
@@ -114,6 +142,18 @@ export const useRoomStore = create<RoomState>((set, get) => ({
             return room;
         } catch (err: any) {
             set({ error: err.message || 'Oda oluşturulamadı' });
+            throw err;
+        }
+    },
+
+    delete: async (userId: string, roomId: string) => {
+        set({ error: null });
+        try {
+            await deleteRoom(roomId);
+            // Odaları yeniden yükle
+            await get().loadRooms();
+        } catch (err: any) {
+            set({ error: err.message || 'Oda silinemedi' });
             throw err;
         }
     },

@@ -245,7 +245,7 @@ function slugify(name: string): string {
 export async function fetchRooms(): Promise<Room[]> {
     const { data: rooms, error } = await supabase
         .from('rooms')
-        .select('*')
+        .select('*, profiles:created_by(username)')
         .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -270,6 +270,7 @@ export async function fetchRooms(): Promise<Room[]> {
                 slug: room.slug,
                 description: room.description || '',
                 created_by: room.created_by,
+                creator_username: room.profiles?.username || null,
                 created_at: room.created_at,
                 member_count: memberCount ?? 0,
                 active_member_count: activeCount ?? 0,
@@ -293,19 +294,40 @@ export async function joinRoom(userId: string, roomId: string): Promise<void> {
 
     if (profileError) throw profileError;
 
+    // Odaya katılırken süreler sıfırdan başlasın (her oda ayrı)
     const { error: memberError } = await supabase
         .from('room_members')
-        .insert({
+        .upsert({
             user_id: userId,
             room_id: roomId,
-        } as any);
+            weekly_study_seconds: 0,
+            total_study_seconds: 0,
+        } as any, { onConflict: 'user_id,room_id' });
 
-    if (memberError && memberError.code !== '23505') {
+    if (memberError) {
         throw memberError;
     }
 }
 
-export async function leaveRoom(userId: string): Promise<void> {
+export async function leaveRoom(userId: string, weeklySeconds: number = 0, totalSeconds: number = 0): Promise<void> {
+    // Önce o anki odadaki süreleri room_members'a kaydet
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('current_room_id')
+        .eq('id', userId)
+        .single();
+
+    if (profile?.current_room_id) {
+        await supabase
+            .from('room_members')
+            .update({
+                weekly_study_seconds: weeklySeconds,
+                total_study_seconds: totalSeconds,
+            } as any)
+            .eq('user_id', userId)
+            .eq('room_id', profile.current_room_id);
+    }
+
     const { error } = await supabase
         .from('profiles')
         .update({
@@ -319,54 +341,66 @@ export async function leaveRoom(userId: string): Promise<void> {
     if (error) throw error;
 }
 
-// Oda bazlı leaderboard getir (sayfalama destekli)
+// Oda bazlı leaderboard getir (sayfalama destekli) — room_members üzerinden
 export async function fetchRoomLeaderboard(
     roomId: string,
     mode: 'weekly' | 'total' | 'past_week',
     page: number = 0,
     pageSize: number = 25
 ): Promise<{ entries: LeaderboardEntry[]; totalCount: number }> {
-    const orderColumn = mode === 'weekly' ? 'weekly_study_seconds' : 'total_study_seconds';
+    const orderColumn = mode === 'weekly' ? 'rm.weekly_study_seconds' : 'rm.total_study_seconds';
     const minSeconds = 0;
     const offset = page * pageSize;
 
-    // Toplam kayıt sayısı
+    // Toplam kayıt sayısı (oda bazlı, > 0 süre)
     const { count: totalCount, error: countError } = await supabase
-        .from('profiles')
-        .select('id', { count: 'exact', head: true })
-        .eq('current_room_id', roomId)
-        .gt(orderColumn, minSeconds);
+        .from('room_members')
+        .select('user_id', { count: 'exact', head: true })
+        .eq('room_id', roomId)
+        .gt(mode === 'weekly' ? 'weekly_study_seconds' : 'total_study_seconds', minSeconds);
 
     if (countError) throw countError;
 
-    // Sayfalama sorgusu
+    // room_members ile profiles join yaparak kullanıcı bilgilerini al
     const { data, error } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, weekly_study_seconds, total_study_seconds, is_active, last_active_at, current_room_id')
-        .eq('current_room_id', roomId)
-        .gt(orderColumn, minSeconds)
-        .order(orderColumn, { ascending: false })
+        .from('room_members')
+        .select(`
+            user_id,
+            weekly_study_seconds,
+            total_study_seconds,
+            profiles:user_id (
+                id,
+                username,
+                avatar_url,
+                is_active,
+                last_active_at,
+                current_room_id
+            )
+        `)
+        .eq('room_id', roomId)
+        .gt(mode === 'weekly' ? 'weekly_study_seconds' : 'total_study_seconds', minSeconds)
+        .order(mode === 'weekly' ? 'weekly_study_seconds' : 'total_study_seconds', { ascending: false })
         .range(offset, offset + pageSize - 1);
 
     if (error) throw error;
 
     const entries: LeaderboardEntry[] = (data || []).map(
         (entry: any, index: number) => ({
-            user_id: entry.id,
-            username: entry.username,
-            avatar_url: entry.avatar_url,
+            user_id: entry.user_id,
+            username: entry.profiles?.username || '?',
+            avatar_url: entry.profiles?.avatar_url || null,
             study_seconds: mode === 'weekly' ? entry.weekly_study_seconds : entry.total_study_seconds,
             rank: offset + index + 1,
-            is_active: entry.is_active ?? false,
-            last_active_at: entry.last_active_at ?? null,
-            room_id: entry.current_room_id,
+            is_active: entry.profiles?.is_active ?? false,
+            last_active_at: entry.profiles?.last_active_at ?? null,
+            room_id: entry.profiles?.current_room_id ?? null,
         })
     );
 
     return { entries, totalCount: totalCount ?? 0 };
 }
 
-// Kullanıcının sıralamasını ve yakın rakipleri getir
+// Kullanıcının sıralamasını ve yakın rakipleri getir (room_members üzerinden)
 export async function fetchUserRankAndNearby(
     roomId: string,
     userId: string,
@@ -379,92 +413,126 @@ export async function fetchUserRankAndNearby(
 }> {
     const orderColumn = mode === 'weekly' ? 'weekly_study_seconds' : 'total_study_seconds';
 
-    // Kullanıcı profilini al
-    const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, weekly_study_seconds, total_study_seconds, is_active, last_active_at, current_room_id')
-        .eq('current_room_id', roomId)
-        .eq('id', userId)
+    // Kullanıcının oda bazlı süresini al
+    const { data: memberData, error: memberError } = await supabase
+        .from('room_members')
+        .select(`
+            user_id,
+            weekly_study_seconds,
+            total_study_seconds,
+            profiles:user_id (
+                username,
+                avatar_url,
+                is_active,
+                last_active_at,
+                current_room_id
+            )
+        `)
+        .eq('room_id', roomId)
+        .eq('user_id', userId)
         .single();
 
-    if (profileError || !profile) {
+    if (memberError || !memberData) {
         return { userEntry: null, aboveEntry: null, belowEntry: null, totalCount: 0 };
     }
 
-    const userSeconds = mode === 'weekly' ? profile.weekly_study_seconds : profile.total_study_seconds;
+    const member: any = memberData;
+    const userSeconds = mode === 'weekly' ? member.weekly_study_seconds : member.total_study_seconds;
 
-    // Toplam kayıt sayısı
+    // Toplam kayıt sayısı (> 0 süre)
     const { count: totalCount } = await supabase
-        .from('profiles')
-        .select('id', { count: 'exact', head: true })
-        .eq('current_room_id', roomId)
+        .from('room_members')
+        .select('user_id', { count: 'exact', head: true })
+        .eq('room_id', roomId)
         .gt(orderColumn, 0);
 
     // Sıralama: kullanıcıdan fazla çalışanları say
     const { count: higherCount } = await supabase
-        .from('profiles')
-        .select('id', { count: 'exact', head: true })
-        .eq('current_room_id', roomId)
+        .from('room_members')
+        .select('user_id', { count: 'exact', head: true })
+        .eq('room_id', roomId)
         .gt(orderColumn, userSeconds);
 
     const rank = (higherCount ?? 0) + 1;
 
     const userEntry: LeaderboardEntry = {
-        user_id: profile.id,
-        username: profile.username,
-        avatar_url: profile.avatar_url,
+        user_id: member.user_id,
+        username: member.profiles?.username || '?',
+        avatar_url: member.profiles?.avatar_url || null,
         study_seconds: userSeconds,
         rank,
-        is_active: profile.is_active ?? false,
-        last_active_at: profile.last_active_at ?? null,
-        room_id: profile.current_room_id,
+        is_active: member.profiles?.is_active ?? false,
+        last_active_at: member.profiles?.last_active_at ?? null,
+        room_id: member.profiles?.current_room_id ?? null,
     };
 
     // Bir üstteki kullanıcı
     let aboveEntry: LeaderboardEntry | null = null;
     const { data: aboveData } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, weekly_study_seconds, total_study_seconds, is_active, last_active_at, current_room_id')
-        .eq('current_room_id', roomId)
+        .from('room_members')
+        .select(`
+            user_id,
+            weekly_study_seconds,
+            total_study_seconds,
+            profiles:user_id (
+                username,
+                avatar_url,
+                is_active,
+                last_active_at,
+                current_room_id
+            )
+        `)
+        .eq('room_id', roomId)
         .gt(orderColumn, userSeconds)
         .order(orderColumn, { ascending: true })
         .limit(1);
 
     if (aboveData && aboveData.length > 0) {
-        const above = aboveData[0];
+        const above: any = aboveData[0];
         aboveEntry = {
-            user_id: above.id,
-            username: above.username,
-            avatar_url: above.avatar_url,
+            user_id: above.user_id,
+            username: above.profiles?.username || '?',
+            avatar_url: above.profiles?.avatar_url || null,
             study_seconds: mode === 'weekly' ? above.weekly_study_seconds : above.total_study_seconds,
             rank: rank - 1,
-            is_active: above.is_active ?? false,
-            last_active_at: above.last_active_at ?? null,
-            room_id: above.current_room_id,
+            is_active: above.profiles?.is_active ?? false,
+            last_active_at: above.profiles?.last_active_at ?? null,
+            room_id: above.profiles?.current_room_id ?? null,
         };
     }
 
     // Bir alttaki kullanıcı
     let belowEntry: LeaderboardEntry | null = null;
     const { data: belowData } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, weekly_study_seconds, total_study_seconds, is_active, last_active_at, current_room_id')
-        .eq('current_room_id', roomId)
+        .from('room_members')
+        .select(`
+            user_id,
+            weekly_study_seconds,
+            total_study_seconds,
+            profiles:user_id (
+                username,
+                avatar_url,
+                is_active,
+                last_active_at,
+                current_room_id
+            )
+        `)
+        .eq('room_id', roomId)
         .lt(orderColumn, userSeconds)
         .order(orderColumn, { ascending: false })
         .limit(1);
 
     if (belowData && belowData.length > 0) {
-        const below = belowData[0];
+        const below: any = belowData[0];
         belowEntry = {
-            user_id: below.id,
-            username: below.username,
-            avatar_url: below.avatar_url,
+            user_id: below.user_id,
+            username: below.profiles?.username || '?',
+            avatar_url: below.profiles?.avatar_url || null,
             study_seconds: mode === 'weekly' ? below.weekly_study_seconds : below.total_study_seconds,
             rank: rank + 1,
-            is_active: below.is_active ?? false,
-            last_active_at: below.last_active_at ?? null,
-            room_id: below.current_room_id,
+            is_active: below.profiles?.is_active ?? false,
+            last_active_at: below.profiles?.last_active_at ?? null,
+            room_id: below.profiles?.current_room_id ?? null,
         };
     }
 
@@ -476,28 +544,48 @@ export async function fetchUserRankAndNearby(
     };
 }
 
-// Odadaki aktif kullanıcıları getir
+// Odadaki aktif kullanıcıları getir (room_members üzerinden, profiles join)
 export async function fetchRoomActiveUsers(roomId: string): Promise<LeaderboardEntry[]> {
     const { data, error } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, weekly_study_seconds, is_active, last_active_at, current_room_id')
-        .eq('current_room_id', roomId)
-        .eq('is_active', true)
+        .from('room_members')
+        .select(`
+            user_id,
+            weekly_study_seconds,
+            profiles:user_id (
+                username,
+                avatar_url,
+                is_active,
+                last_active_at,
+                current_room_id
+            )
+        `)
+        .eq('room_id', roomId)
         .order('weekly_study_seconds', { ascending: false })
         .limit(20);
 
     if (error) throw error;
 
-    return (data || []).map((entry: any) => ({
-        user_id: entry.id,
-        username: entry.username,
-        avatar_url: entry.avatar_url,
-        study_seconds: entry.weekly_study_seconds,
-        rank: 0,
-        is_active: true,
-        last_active_at: entry.last_active_at ?? null,
-        room_id: entry.current_room_id,
-    }));
+    return (data || [])
+        .filter((entry: any) => entry.profiles?.is_active === true)
+        .map((entry: any) => ({
+            user_id: entry.user_id,
+            username: entry.profiles?.username || '?',
+            avatar_url: entry.profiles?.avatar_url || null,
+            study_seconds: entry.weekly_study_seconds,
+            rank: 0,
+            is_active: true,
+            last_active_at: entry.profiles?.last_active_at ?? null,
+            room_id: entry.profiles?.current_room_id ?? null,
+        }));
+}
+
+export async function deleteRoom(roomId: string): Promise<void> {
+    const { error } = await supabase
+        .from('rooms')
+        .delete()
+        .eq('id', roomId);
+
+    if (error) throw error;
 }
 
 export async function createRoom(

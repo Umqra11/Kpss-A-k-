@@ -25,6 +25,7 @@ export interface Room {
     slug: string;
     description: string;
     created_by: string | null;
+    creator_username?: string | null;
     created_at: string;
     member_count?: number;
     active_member_count?: number;
