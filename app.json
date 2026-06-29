@@ -3,6 +3,7 @@
     "name": "kpss-aski",
     "slug": "kpss-aski",
     "version": "1.0.0",
+    "scheme": "kpss-aski",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",

@@ -61,19 +61,39 @@ export async function signUpWithUsername(username: string) {
     };
 }
 
+// Promise timeout helper
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+    const timeout = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), ms)
+    );
+    return Promise.race([promise, timeout]);
+}
+
 // Otomatik giriş (token varsa)
 export async function autoLogin() {
-    const { data: { session } } = await supabase.auth.getSession();
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sessionResult: any = await withTimeout(supabase.auth.getSession(), 8000);
+        const session = sessionResult?.data?.session ?? null;
 
-    if (!session) return null;
+        if (!session) return null;
 
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const profileResult: any = await withTimeout(
+            supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .single(),
+            8000
+        );
 
-    return { user: session.user, profile };
+        return { user: session.user, profile: profileResult?.data ?? null };
+    } catch (err) {
+        console.warn('[autoLogin] Failed:', err);
+        return null;
+    }
 }
 
 // Kullanıcı profilini getir

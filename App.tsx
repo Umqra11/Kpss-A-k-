@@ -10,8 +10,9 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import * as Linking from 'expo-linking';
 import { Colors } from './src/theme/colors';
 import { Fonts, FontSize } from './src/theme/typography';
 import { useAuthStore } from './src/stores/authStore';
@@ -77,7 +78,18 @@ export default function App() {
         barStyle="dark-content"
         backgroundColor={Colors.systemBackground}
       />
-      <NavigationContainer>
+      <NavigationContainer
+        linking={{
+          prefixes: [Linking.createURL('/')],
+          config: {
+            screens: {
+              Main: 'main',
+              Leaderboard: 'leaderboard',
+              Profile: 'profile',
+            },
+          },
+        }}
+      >
         <Tab.Navigator
           screenOptions={{
             headerShown: false,
