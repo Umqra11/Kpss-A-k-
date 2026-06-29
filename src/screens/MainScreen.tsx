@@ -49,6 +49,7 @@ export function MainScreen() {
 
     const roomId = profile?.current_room_id;
     const roomName = rooms.find((r) => r.id === roomId)?.name || '';
+    const leave = useRoomStore((s) => s.leave);
 
     useEffect(() => {
         loadTimerState();
@@ -56,6 +57,12 @@ export function MainScreen() {
             fetchLeaderboard(roomId);
         }
     }, [roomId]);
+
+    const handleLeaveRoom = useCallback(async () => {
+        const userId = profile?.id;
+        if (!userId) return;
+        await leave(userId);
+    }, [profile?.id, leave]);
 
     const handleMainButton = useCallback(async () => {
         if (status === 'idle') {
@@ -87,7 +94,16 @@ export function MainScreen() {
                     <View style={styles.headerLeft}>
                         <Text style={styles.username}>@{profile?.username || '...'}</Text>
                         {roomName ? (
-                            <Text style={styles.roomName}>🏠 {roomName}</Text>
+                            <>
+                                <Text style={styles.roomName}>🏠 {roomName}</Text>
+                                <AppleButton
+                                    title="Oda Değiştir"
+                                    onPress={handleLeaveRoom}
+                                    variant="secondary"
+                                    size="small"
+                                    style={styles.changeRoomButton}
+                                />
+                            </>
                         ) : null}
                     </View>
                     <View style={styles.segmentWrapper}>
@@ -211,6 +227,9 @@ const styles = StyleSheet.create({
         fontSize: FontSize.caption1,
         color: Colors.secondaryLabel,
         marginTop: 2,
+    },
+    changeRoomButton: {
+        marginTop: Spacing.xs,
     },
     segmentWrapper: {
         maxWidth: 200,

@@ -64,6 +64,12 @@ export function RoomSelectionScreen() {
         setJoiningRoomId(null);
     };
 
+    const logout = useAuthStore((s) => s.logout);
+
+    const handleLogout = async () => {
+        await logout();
+    };
+
     const handleCreate = async () => {
         if (!user) return;
         const trimmedName = newRoomName.trim();
@@ -123,6 +129,15 @@ export function RoomSelectionScreen() {
                         variant="primary"
                         size="large"
                         style={styles.createButton}
+                    />
+
+                    {/* Çıkış Yap Butonu */}
+                    <AppleButton
+                        title="Çıkış Yap"
+                        onPress={handleLogout}
+                        variant="destructive"
+                        size="medium"
+                        style={styles.logoutButton}
                     />
 
                     {/* Yükleniyor */}
@@ -346,6 +361,10 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     createButton: {
+        marginBottom: Spacing.md,
+        width: '100%',
+    },
+    logoutButton: {
         marginBottom: Spacing.xxl,
         width: '100%',
     },
