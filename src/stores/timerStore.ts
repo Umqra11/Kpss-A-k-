@@ -208,6 +208,8 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                 }
 
                 // Profili güncelle ve aktif durumdan çıkar (süreleri profiles'a YAZMA)
+                // ÖNCE computeStudyStats ile en güncel weekly/total değerleri hesapla
+                get().computeStudyStats();
                 const state = get();
                 const profile = useAuthStore.getState().profile;
 
@@ -386,12 +388,35 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
             // sessiz
         }
 
+        // Sayfa yeniden açıldığında DB'den taze base süreleri oku
+        const { useAuthStore } = await import('./authStore');
+        const user = useAuthStore.getState().user;
+        const profile = useAuthStore.getState().profile;
+        if (user && profile?.current_room_id && (get().status === 'running' || get().status === 'paused')) {
+            try {
+                const { data: memberData } = await supabase
+                    .from('room_members')
+                    .select('weekly_study_seconds, total_study_seconds')
+                    .eq('user_id', user.id)
+                    .eq('room_id', profile.current_room_id)
+                    .single();
+                if (memberData) {
+                    set({
+                        _roomBaseWeeklySeconds: memberData.weekly_study_seconds || 0,
+                        _roomBaseTotalSeconds: memberData.total_study_seconds || 0,
+                    } as any);
+                }
+            } catch (err) {
+                // Offline - sessiz
+            }
+        }
+
         get().computeStudyStats();
     },
 
     saveTimerState: async () => {
-        const { startTime, accumulatedMs, status, sessionStartTime, _sessionWeekStart, _postResetAccumulatedMs, _roomBaseWeeklySeconds, _roomBaseTotalSeconds } = get();
-        const state = { startTime, accumulatedMs, status, sessionStartTime, _sessionWeekStart, _postResetAccumulatedMs, _roomBaseWeeklySeconds, _roomBaseTotalSeconds };
+        const { startTime, accumulatedMs, status, sessionStartTime, _sessionWeekStart, _postResetAccumulatedMs } = get();
+        const state = { startTime, accumulatedMs, status, sessionStartTime, _sessionWeekStart, _postResetAccumulatedMs };
         await AsyncStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state));
 
         const { milestonesEarnedThisWeek } = get();
