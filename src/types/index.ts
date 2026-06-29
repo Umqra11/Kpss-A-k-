@@ -108,7 +108,13 @@ export interface MilestoneConfig {
 }
 
 // Haftalık/Toplam görünüm modu
-export type LeaderboardMode = 'weekly' | 'total';
+export type LeaderboardMode = 'weekly' | 'past_week' | 'total';
+
+// Geçmiş hafta seçeneği
+export interface PastWeekOption {
+    weekStart: string;
+    label: string;
+}
 
 // Navigasyon ekran isimleri
 export type ScreenName = 'Auth' | 'RoomSelection' | 'Main' | 'Leaderboard' | 'Profile';

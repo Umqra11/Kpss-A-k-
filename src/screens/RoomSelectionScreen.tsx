@@ -177,14 +177,6 @@ export function RoomSelectionScreen() {
                                 ))}
                             </View>
 
-                            {/* Alt tarafta da tekrar buton (opsiyonel, scroll sonunda) */}
-                            <AppleButton
-                                title="+ Yeni Oda Oluştur"
-                                onPress={() => setModalVisible(true)}
-                                variant="secondary"
-                                size="large"
-                                style={styles.createButtonBottom}
-                            />
                         </>
                     )}
                 </ScrollView>

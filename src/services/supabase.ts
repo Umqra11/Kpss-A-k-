@@ -5,17 +5,63 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Database } from '../types/database';
-import { Room, LeaderboardEntry } from '../types';
+import { Room, LeaderboardEntry, PastWeekOption } from '../types';
 
 // TODO: Supabase projenizi oluşturduktan sonra bu değerleri güncelleyin
 // https://supabase.com/dashboard adresinden proje oluşturun
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://bhawilumayixgxmqoeod.supabase.co';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_L3oWBw19pDcYL4ap3b3PEQ__RvLVRoU';
 
+// Brave / gizlilik odaklı tarayıcılar için in-memory fallback storage
+// AsyncStorage (localStorage) engellendiğinde oturum token'ını memory'de tutar
+function createSafeStorage() {
+    const memoryMap = new Map<string, string>();
+    let localStorageAvailable = false;
+
+    // localStorage testi
+    try {
+        const testKey = '__kpss_storage_test__';
+        localStorage.setItem(testKey, '1');
+        localStorage.removeItem(testKey);
+        localStorageAvailable = true;
+    } catch (e) {
+        localStorageAvailable = false;
+    }
+
+    return {
+        getItem: async (key: string): Promise<string | null> => {
+            try {
+                if (localStorageAvailable) {
+                    return await AsyncStorage.getItem(key);
+                }
+            } catch (e) { /* fall through */ }
+            return memoryMap.get(key) ?? null;
+        },
+        setItem: async (key: string, value: string): Promise<void> => {
+            try {
+                if (localStorageAvailable) {
+                    await AsyncStorage.setItem(key, value);
+                    return;
+                }
+            } catch (e) { /* fall through */ }
+            memoryMap.set(key, value);
+        },
+        removeItem: async (key: string): Promise<void> => {
+            try {
+                if (localStorageAvailable) {
+                    await AsyncStorage.removeItem(key);
+                    return;
+                }
+            } catch (e) { /* fall through */ }
+            memoryMap.delete(key);
+        },
+    };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const supabase: any = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-        storage: AsyncStorage,
+        storage: createSafeStorage() as any,
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
@@ -276,7 +322,7 @@ export async function leaveRoom(userId: string): Promise<void> {
 // Oda bazlı leaderboard getir (sayfalama destekli)
 export async function fetchRoomLeaderboard(
     roomId: string,
-    mode: 'weekly' | 'total',
+    mode: 'weekly' | 'total' | 'past_week',
     page: number = 0,
     pageSize: number = 25
 ): Promise<{ entries: LeaderboardEntry[]; totalCount: number }> {
@@ -324,7 +370,7 @@ export async function fetchRoomLeaderboard(
 export async function fetchUserRankAndNearby(
     roomId: string,
     userId: string,
-    mode: 'weekly' | 'total'
+    mode: 'weekly' | 'total' | 'past_week'
 ): Promise<{
     userEntry: LeaderboardEntry | null;
     aboveEntry: LeaderboardEntry | null;

@@ -25,6 +25,7 @@ interface TimerStore extends TimerState {
     _appStateSubscription: any;
     _sessionWeekStart: string | null;
     _postResetAccumulatedMs: number;
+    _lastSyncedElapsedMs: number;
 
     // Actions
     startTimer: () => Promise<void>;
@@ -63,6 +64,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     _appStateSubscription: null,
     _sessionWeekStart: null,
     _postResetAccumulatedMs: 0,
+    _lastSyncedElapsedMs: 0,
 
     startTimer: async () => {
         const state = get();
@@ -208,6 +210,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
             sessionStartTime: null,
             _sessionWeekStart: null,
             _postResetAccumulatedMs: 0,
+            _lastSyncedElapsedMs: 0,
         } as any);
 
         get().computeStudyStats();
@@ -464,27 +467,28 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         const profile = useAuthStore.getState().profile;
 
         const elapsedMs = get().getElapsedMs();
-        const postResetMs = get()._postResetAccumulatedMs ?? 0;
+        const lastSyncedMs = get()._lastSyncedElapsedMs ?? 0;
 
-        // Post-reset süre (haftalık için sadece son resetten sonrası)
-        let postResetSeconds = Math.floor((elapsedMs - postResetMs) / 1000);
-        if (postResetSeconds < 0) postResetSeconds = 0;
+        // Bu oturumda son sync'ten bu yana geçen yeni süre (delta)
+        const newDeltaMs = Math.max(0, elapsedMs - lastSyncedMs);
+        const newDeltaSeconds = Math.floor(newDeltaMs / 1000);
 
         const elapsedSeconds = Math.floor(elapsedMs / 1000);
 
         if (profile) {
-            // Haftalık = profile zaten sıfırlanmış + sadece post-reset süre
-            const weekly = (profile.weekly_study_seconds || 0) + postResetSeconds;
+            // Haftalık = DB'deki profil değeri + sadece sync'ten bu yana geçen delta
+            const weekly = (profile.weekly_study_seconds || 0) + newDeltaSeconds;
             const total = (profile.total_study_seconds || 0) + elapsedSeconds;
 
             set({
                 dailyStudySeconds: weekly,
                 weeklyStudySeconds: weekly,
                 totalStudySeconds: total,
+                _lastSyncedElapsedMs: elapsedMs,
             });
         } else {
             set({
-                weeklyStudySeconds: postResetSeconds,
+                weeklyStudySeconds: newDeltaSeconds,
                 totalStudySeconds: elapsedSeconds,
             });
         }
