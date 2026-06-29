@@ -49,50 +49,35 @@ export async function signUpWithUsername(username: string) {
             throw new Error('Bu kullanıcı adı zaten alınmış!');
         }
 
-        // Pasif profili reaktive et: eski istatistikleri al, eski profili sil (cascade),
-        // yeni auth id ile yeni profil oluştur
-        const oldStats = {
-            total_study_seconds: existingProfile.total_study_seconds || 0,
-            weekly_study_seconds: existingProfile.weekly_study_seconds || 0,
-            previous_weekly_study_seconds: existingProfile.previous_weekly_study_seconds || 0,
-        };
-        const oldCreatedAt = existingProfile.created_at;
+        // Pasif profili reaktive et: RLS'yi bypass eden SECURITY DEFINER 
+        // PostgreSQL fonksiyonunu çağır
+        const { data: rpcResult, error: rpcError } = await supabase.rpc(
+            'reactivate_profile',
+            {
+                p_old_profile_id: existingProfile.id,
+                p_new_auth_id: authData.user.id,
+                p_username: username,
+            }
+        );
 
-        // Eski profili sil (cascade: room_members, study_sessions da silinir)
-        const { error: deleteError } = await supabase
-            .from('profiles')
-            .delete()
-            .eq('id', existingProfile.id);
-
-        if (deleteError) {
+        if (rpcError) {
             await supabase.auth.signOut();
-            throw deleteError;
+            throw rpcError;
         }
 
-        // Yeni profil oluştur, eski istatistikleri koru
-        const { error: insertError } = await supabase.from('profiles').insert({
-            id: authData.user.id,
-            username,
-            total_study_seconds: oldStats.total_study_seconds,
-            weekly_study_seconds: oldStats.weekly_study_seconds,
-            previous_weekly_study_seconds: oldStats.previous_weekly_study_seconds,
-            is_active: true,
-            last_active_at: new Date().toISOString(),
-            current_room_id: null,
-            created_at: oldCreatedAt || new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-        } as any);
-
-        if (insertError) {
+        if (!rpcResult?.success) {
             await supabase.auth.signOut();
-            throw insertError;
+            throw new Error(rpcResult?.error || 'Profil reaktive edilemedi');
         }
 
         return {
             user: authData.user,
             session: authData.session,
             reactivated: true,
-            previousStats: oldStats,
+            previousStats: {
+                total_study_seconds: rpcResult.total_study_seconds || 0,
+                weekly_study_seconds: rpcResult.weekly_study_seconds || 0,
+            },
         };
     }
 
