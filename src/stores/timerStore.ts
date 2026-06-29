@@ -532,18 +532,18 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
 
     computeStudyStats: async () => {
         const elapsedMs = get().getElapsedMs();
-        const lastSyncedMs = get()._lastSyncedElapsedMs ?? 0;
         const roomBaseWeekly = get()._roomBaseWeeklySeconds ?? 0;
         const roomBaseTotal = get()._roomBaseTotalSeconds ?? 0;
+        const postResetAccumulated = get()._postResetAccumulatedMs ?? 0;
 
-        // Bu oturumda son sync'ten bu yana geçen yeni süre (delta)
-        const newDeltaMs = Math.max(0, elapsedMs - lastSyncedMs);
-        const newDeltaSeconds = Math.floor(newDeltaMs / 1000);
-
+        // Bu oturumda toplam geçen süre
         const elapsedSeconds = Math.floor(elapsedMs / 1000);
+        // Hafta sınırı sonrası efektif süre (reset anına kadar olan kısım hariç)
+        const effectiveElapsedMs = elapsedMs - postResetAccumulated;
+        const effectiveElapsedSeconds = Math.floor(effectiveElapsedMs / 1000);
 
-        // Oda bazlı: base (DB'den okunan) + delta
-        const weekly = roomBaseWeekly + newDeltaSeconds;
+        // Oda bazlı: base (DB'den okunan) + bu oturumun tamamı
+        const weekly = roomBaseWeekly + effectiveElapsedSeconds;
         const total = roomBaseTotal + elapsedSeconds;
 
         set({
