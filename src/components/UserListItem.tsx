@@ -11,6 +11,7 @@ interface UserListItemProps {
     isMe?: boolean;
     isActive?: boolean;
     activeIndicator?: React.ReactNode;
+    prefix?: string;
 }
 
 function formatTime(seconds: number): string {
@@ -32,7 +33,7 @@ function getRankDisplay(rank: number): string {
     return medal || `#${rank}`;
 }
 
-export function UserListItem({ username, studySeconds, rank, isMe = false, isActive = false, activeIndicator }: UserListItemProps) {
+export function UserListItem({ username, studySeconds, rank, isMe = false, isActive = false, activeIndicator, prefix }: UserListItemProps) {
     const initials = username.charAt(0).toUpperCase();
 
     return (
@@ -51,6 +52,7 @@ export function UserListItem({ username, studySeconds, rank, isMe = false, isAct
 
             <View style={styles.info}>
                 <View style={styles.nameRow}>
+                    {prefix ? <Text style={styles.prefixText}>{prefix}</Text> : null}
                     <Text style={[styles.username, isMe && styles.usernameMe]} numberOfLines={1}>
                         {username}
                     </Text>
@@ -137,6 +139,12 @@ const styles = StyleSheet.create({
         fontFamily: Fonts.body.regular,
         fontSize: FontSize.footnote,
         color: Colors.systemBlue,
+    },
+    prefixText: {
+        fontFamily: Fonts.body.regular,
+        fontSize: FontSize.footnote,
+        color: Colors.secondaryLabel,
+        marginRight: Spacing.xxs,
     },
     activeDot: {
         width: 8,

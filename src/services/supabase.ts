@@ -51,7 +51,6 @@ export async function signUpWithUsername(username: string) {
     } as any);
 
     if (profileError) {
-        // Profil oluşturulamadıysa oturumu temizle
         await supabase.auth.signOut();
         throw profileError;
     }
@@ -109,8 +108,6 @@ export async function markMilestoneEarned(achievementId: string) {
 export function getCurrentWeekStart(): string {
     const now = new Date();
     const dayOfWeek = now.getDay();
-    // Salı = 2, Çarşamba = 3, ..., Pazartesi = 1
-    // Salı'yı haftanın ilk günü kabul edelim
     const daysUntilTuesday = dayOfWeek >= 2 ? dayOfWeek - 2 : dayOfWeek + 5;
     const tuesday = new Date(now);
     tuesday.setDate(now.getDate() - daysUntilTuesday);
@@ -127,7 +124,6 @@ export function getTodayDate(): string {
 // ODA (ROOMS) SERVİS FONKSİYONLARI
 // ============================================================================
 
-// İsmi slug'a çevir (Türkçe karakter desteği ile)
 function slugify(name: string): string {
     const turkishChars: Record<string, string> = {
         'ı': 'i', 'İ': 'i', 'ğ': 'g', 'Ğ': 'g',
@@ -142,7 +138,6 @@ function slugify(name: string): string {
         .substring(0, 50);
 }
 
-// Tüm odaları getir (üye sayısı ve aktif üye sayısı ile)
 export async function fetchRooms(): Promise<Room[]> {
     const { data: rooms, error } = await supabase
         .from('rooms')
@@ -152,25 +147,18 @@ export async function fetchRooms(): Promise<Room[]> {
     if (error) throw error;
     if (!rooms || rooms.length === 0) return [];
 
-    // Her oda için üye sayısı ve aktif üye sayısını hesapla
     const roomsWithCounts: Room[] = await Promise.all(
         rooms.map(async (room: any) => {
-            // Toplam üye sayısı
-            const { count: memberCount, error: memberError } = await supabase
+            const { count: memberCount } = await supabase
                 .from('room_members')
                 .select('*', { count: 'exact', head: true })
                 .eq('room_id', room.id);
 
-            if (memberError) console.warn('Member count error:', memberError);
-
-            // Aktif üye sayısı (profiles ile JOIN)
-            const { count: activeCount, error: activeError } = await supabase
+            const { count: activeCount } = await supabase
                 .from('profiles')
                 .select('*', { count: 'exact', head: true })
                 .eq('current_room_id', room.id)
                 .eq('is_active', true);
-
-            if (activeError) console.warn('Active count error:', activeError);
 
             return {
                 id: room.id,
@@ -188,9 +176,7 @@ export async function fetchRooms(): Promise<Room[]> {
     return roomsWithCounts;
 }
 
-// Odaya katıl
 export async function joinRoom(userId: string, roomId: string): Promise<void> {
-    // current_room_id'yi güncelle
     const { error: profileError } = await supabase
         .from('profiles')
         .update({
@@ -203,7 +189,6 @@ export async function joinRoom(userId: string, roomId: string): Promise<void> {
 
     if (profileError) throw profileError;
 
-    // room_members'a ekle (zaten varsa hata vermez)
     const { error: memberError } = await supabase
         .from('room_members')
         .insert({
@@ -211,13 +196,11 @@ export async function joinRoom(userId: string, roomId: string): Promise<void> {
             room_id: roomId,
         } as any);
 
-    // 23505 = unique violation (zaten üye), bu hatayı yoksay
     if (memberError && memberError.code !== '23505') {
         throw memberError;
     }
 }
 
-// Odadan ayrıl (current_room_id'yi temizle)
 export async function leaveRoom(userId: string): Promise<void> {
     const { error } = await supabase
         .from('profiles')
@@ -232,21 +215,34 @@ export async function leaveRoom(userId: string): Promise<void> {
     if (error) throw error;
 }
 
-// Oda bazlı leaderboard getir
+// Oda bazlı leaderboard getir (sayfalama destekli)
 export async function fetchRoomLeaderboard(
     roomId: string,
-    mode: 'weekly' | 'total'
-): Promise<LeaderboardEntry[]> {
+    mode: 'weekly' | 'total',
+    page: number = 0,
+    pageSize: number = 25
+): Promise<{ entries: LeaderboardEntry[]; totalCount: number }> {
     const orderColumn = mode === 'weekly' ? 'weekly_study_seconds' : 'total_study_seconds';
-    const minSeconds = 0; // Sıfırdan büyük olanları getir
+    const minSeconds = 0;
+    const offset = page * pageSize;
 
+    // Toplam kayıt sayısı
+    const { count: totalCount, error: countError } = await supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('current_room_id', roomId)
+        .gt(orderColumn, minSeconds);
+
+    if (countError) throw countError;
+
+    // Sayfalama sorgusu
     const { data, error } = await supabase
         .from('profiles')
         .select('id, username, avatar_url, weekly_study_seconds, total_study_seconds, is_active, last_active_at, current_room_id')
         .eq('current_room_id', roomId)
         .gt(orderColumn, minSeconds)
         .order(orderColumn, { ascending: false })
-        .limit(50);
+        .range(offset, offset + pageSize - 1);
 
     if (error) throw error;
 
@@ -256,14 +252,124 @@ export async function fetchRoomLeaderboard(
             username: entry.username,
             avatar_url: entry.avatar_url,
             study_seconds: mode === 'weekly' ? entry.weekly_study_seconds : entry.total_study_seconds,
-            rank: index + 1,
+            rank: offset + index + 1,
             is_active: entry.is_active ?? false,
             last_active_at: entry.last_active_at ?? null,
             room_id: entry.current_room_id,
         })
     );
 
-    return entries;
+    return { entries, totalCount: totalCount ?? 0 };
+}
+
+// Kullanıcının sıralamasını ve yakın rakipleri getir
+export async function fetchUserRankAndNearby(
+    roomId: string,
+    userId: string,
+    mode: 'weekly' | 'total'
+): Promise<{
+    userEntry: LeaderboardEntry | null;
+    aboveEntry: LeaderboardEntry | null;
+    belowEntry: LeaderboardEntry | null;
+    totalCount: number;
+}> {
+    const orderColumn = mode === 'weekly' ? 'weekly_study_seconds' : 'total_study_seconds';
+
+    // Kullanıcı profilini al
+    const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url, weekly_study_seconds, total_study_seconds, is_active, last_active_at, current_room_id')
+        .eq('current_room_id', roomId)
+        .eq('id', userId)
+        .single();
+
+    if (profileError || !profile) {
+        return { userEntry: null, aboveEntry: null, belowEntry: null, totalCount: 0 };
+    }
+
+    const userSeconds = mode === 'weekly' ? profile.weekly_study_seconds : profile.total_study_seconds;
+
+    // Toplam kayıt sayısı
+    const { count: totalCount } = await supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('current_room_id', roomId)
+        .gt(orderColumn, 0);
+
+    // Sıralama: kullanıcıdan fazla çalışanları say
+    const { count: higherCount } = await supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('current_room_id', roomId)
+        .gt(orderColumn, userSeconds);
+
+    const rank = (higherCount ?? 0) + 1;
+
+    const userEntry: LeaderboardEntry = {
+        user_id: profile.id,
+        username: profile.username,
+        avatar_url: profile.avatar_url,
+        study_seconds: userSeconds,
+        rank,
+        is_active: profile.is_active ?? false,
+        last_active_at: profile.last_active_at ?? null,
+        room_id: profile.current_room_id,
+    };
+
+    // Bir üstteki kullanıcı
+    let aboveEntry: LeaderboardEntry | null = null;
+    const { data: aboveData } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url, weekly_study_seconds, total_study_seconds, is_active, last_active_at, current_room_id')
+        .eq('current_room_id', roomId)
+        .gt(orderColumn, userSeconds)
+        .order(orderColumn, { ascending: true })
+        .limit(1);
+
+    if (aboveData && aboveData.length > 0) {
+        const above = aboveData[0];
+        aboveEntry = {
+            user_id: above.id,
+            username: above.username,
+            avatar_url: above.avatar_url,
+            study_seconds: mode === 'weekly' ? above.weekly_study_seconds : above.total_study_seconds,
+            rank: rank - 1,
+            is_active: above.is_active ?? false,
+            last_active_at: above.last_active_at ?? null,
+            room_id: above.current_room_id,
+        };
+    }
+
+    // Bir alttaki kullanıcı
+    let belowEntry: LeaderboardEntry | null = null;
+    const { data: belowData } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url, weekly_study_seconds, total_study_seconds, is_active, last_active_at, current_room_id')
+        .eq('current_room_id', roomId)
+        .lt(orderColumn, userSeconds)
+        .order(orderColumn, { ascending: false })
+        .limit(1);
+
+    if (belowData && belowData.length > 0) {
+        const below = belowData[0];
+        belowEntry = {
+            user_id: below.id,
+            username: below.username,
+            avatar_url: below.avatar_url,
+            study_seconds: mode === 'weekly' ? below.weekly_study_seconds : below.total_study_seconds,
+            rank: rank + 1,
+            is_active: below.is_active ?? false,
+            last_active_at: below.last_active_at ?? null,
+            room_id: below.current_room_id,
+        };
+    }
+
+    return {
+        userEntry,
+        aboveEntry,
+        belowEntry,
+        totalCount: totalCount ?? 0,
+    };
 }
 
 // Odadaki aktif kullanıcıları getir
@@ -278,23 +384,18 @@ export async function fetchRoomActiveUsers(roomId: string): Promise<LeaderboardE
 
     if (error) throw error;
 
-    const activeUsers: LeaderboardEntry[] = (data || []).map(
-        (entry: any) => ({
-            user_id: entry.id,
-            username: entry.username,
-            avatar_url: entry.avatar_url,
-            study_seconds: entry.weekly_study_seconds,
-            rank: 0,
-            is_active: true,
-            last_active_at: entry.last_active_at ?? null,
-            room_id: entry.current_room_id,
-        })
-    );
-
-    return activeUsers;
+    return (data || []).map((entry: any) => ({
+        user_id: entry.id,
+        username: entry.username,
+        avatar_url: entry.avatar_url,
+        study_seconds: entry.weekly_study_seconds,
+        rank: 0,
+        is_active: true,
+        last_active_at: entry.last_active_at ?? null,
+        room_id: entry.current_room_id,
+    }));
 }
 
-// Yeni oda oluştur
 export async function createRoom(
     userId: string,
     name: string,
@@ -302,7 +403,6 @@ export async function createRoom(
 ): Promise<{ id: string; name: string; slug: string }> {
     const slug = slugify(name);
 
-    // Aynı slug varsa kontrol et
     const { data: existingRoom } = await supabase
         .from('rooms')
         .select('id')
@@ -331,7 +431,6 @@ export async function createRoom(
         throw error;
     }
 
-    // Oluşturan kişiyi otomatik odaya ekle
     await joinRoom(userId, data.id);
 
     return data;

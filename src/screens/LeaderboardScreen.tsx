@@ -1,7 +1,7 @@
 /**
  * KPSS Aşkı - Leaderboard Ekranı (Apple-minimalist)
  * Haftalık / Tüm Zamanlar + Aktif Kullanıcılar
- * v3: Oda bazlı - sadece bulunduğun odadaki kullanıcıları gösterir
+ * v4: 25'er sayfalama + kullanıcı sıralaması ve yakın rakipler
  */
 
 import React, { useEffect } from 'react';
@@ -19,6 +19,8 @@ import { Spacing } from '../theme/spacing';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { UserListItem } from '../components/UserListItem';
 import { PulseBadge } from '../components/PulseBadge';
+import { AppleButton } from '../components/AppleButton';
+import { AppleCard } from '../components/AppleCard';
 import { useLeaderboardStore } from '../stores/leaderboardStore';
 import { useAuthStore } from '../stores/authStore';
 import { useRoomStore } from '../stores/roomStore';
@@ -32,19 +34,22 @@ export function LeaderboardScreen() {
     const totalEntries = useLeaderboardStore((s) => s.totalEntries);
     const activeUsers = useLeaderboardStore((s) => s.activeUsers);
     const isLoading = useLeaderboardStore((s) => s.isLoading);
+    const hasMore = useLeaderboardStore((s) => s.hasMore);
+    const currentUserEntry = useLeaderboardStore((s) => s.currentUserEntry);
+    const nearbyAbove = useLeaderboardStore((s) => s.nearbyAbove);
+    const nearbyBelow = useLeaderboardStore((s) => s.nearbyBelow);
     const fetchLeaderboard = useLeaderboardStore((s) => s.fetchLeaderboard);
     const fetchActiveUsers = useLeaderboardStore((s) => s.fetchActiveUsers);
     const subscribeToLeaderboard = useLeaderboardStore((s) => s.subscribeToLeaderboard);
     const subscribeToActiveUsers = useLeaderboardStore((s) => s.subscribeToActiveUsers);
+    const loadNextPage = useLeaderboardStore((s) => s.loadNextPage);
 
     const userId = useAuthStore((s) => s.user?.id);
     const profile = useAuthStore((s) => s.profile);
     const rooms = useRoomStore((s) => s.rooms);
     const roomId = profile?.current_room_id;
 
-    // Oda adını bul
     const roomName = rooms.find((r) => r.id === roomId)?.name || '';
-
     const entries = mode === 'weekly' ? weeklyEntries : totalEntries;
 
     useEffect(() => {
@@ -88,6 +93,9 @@ export function LeaderboardScreen() {
         </View>
     );
 
+    // Kullanıcı listede olup olmadığını kontrol et
+    const isUserInList = entries.some((e) => e.user_id === userId);
+
     return (
         <SafeAreaView style={styles.container}>
             {/* Oda başlığı */}
@@ -125,7 +133,7 @@ export function LeaderboardScreen() {
             )}
 
             {/* Leaderboard Listesi */}
-            {isLoading ? (
+            {isLoading && entries.length === 0 ? (
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color={Colors.systemBlue} />
                 </View>
@@ -141,6 +149,77 @@ export function LeaderboardScreen() {
                         entries.length > 0 ? (
                             <Text style={styles.sectionTitle}>🏆 Oda Sıralaması</Text>
                         ) : null
+                    }
+                    ListFooterComponent={
+                        <View style={styles.footerContainer}>
+                            {/* "Daha Fazla Göster" Butonu */}
+                            {hasMore && (
+                                <AppleButton
+                                    title={isLoading ? 'Yükleniyor...' : 'Daha Fazla Göster'}
+                                    onPress={() => roomId && loadNextPage(roomId)}
+                                    variant="secondary"
+                                    size="medium"
+                                    disabled={isLoading}
+                                    style={styles.loadMoreButton}
+                                />
+                            )}
+
+                            {/* Senin Sıralaman Bölümü */}
+                            {currentUserEntry && !isUserInList && (
+                                <AppleCard style={styles.myRankCard} variant="grouped">
+                                    <Text style={styles.myRankTitle}>
+                                        📍 Senin Sıralaman
+                                    </Text>
+
+                                    {/* Bir üstteki rakip */}
+                                    {nearbyAbove && (
+                                        <UserListItem
+                                            username={nearbyAbove.username}
+                                            studySeconds={nearbyAbove.study_seconds}
+                                            rank={nearbyAbove.rank}
+                                            isMe={false}
+                                            isActive={nearbyAbove.is_active}
+                                            prefix="⬆️ "
+                                        />
+                                    )}
+
+                                    {/* Kullanıcının kendisi */}
+                                    <UserListItem
+                                        username={currentUserEntry.username}
+                                        studySeconds={currentUserEntry.study_seconds}
+                                        rank={currentUserEntry.rank}
+                                        isMe={true}
+                                        isActive={currentUserEntry.is_active}
+                                        prefix="👤 "
+                                        activeIndicator={currentUserEntry.is_active ? <PulseBadge size={8} /> : undefined}
+                                    />
+
+                                    {/* Bir alttaki rakip */}
+                                    {nearbyBelow && (
+                                        <UserListItem
+                                            username={nearbyBelow.username}
+                                            studySeconds={nearbyBelow.study_seconds}
+                                            rank={nearbyBelow.rank}
+                                            isMe={false}
+                                            isActive={nearbyBelow.is_active}
+                                            prefix="⬇️ "
+                                        />
+                                    )}
+                                </AppleCard>
+                            )}
+
+                            {/* Kullanıcı listede varsa ve listedeyse bile sıralama kartını göster */}
+                            {currentUserEntry && isUserInList && (
+                                <AppleCard style={styles.myRankCard} variant="grouped">
+                                    <Text style={styles.myRankTitle}>
+                                        📍 Sıralaman: #{currentUserEntry.rank}
+                                    </Text>
+                                    <Text style={styles.myRankSubtitle}>
+                                        {mode === 'weekly' ? 'Haftalık' : 'Toplam'}: {formatDurationCompact(currentUserEntry.study_seconds)}
+                                    </Text>
+                                </AppleCard>
+                            )}
+                        </View>
                     }
                 />
             )}
@@ -203,5 +282,28 @@ const styles = StyleSheet.create({
         color: Colors.secondaryLabel,
         textAlign: 'center',
         lineHeight: 24,
+    },
+    footerContainer: {
+        marginTop: Spacing.md,
+        gap: Spacing.md,
+    },
+    loadMoreButton: {
+        width: '100%',
+    },
+    myRankCard: {
+        gap: Spacing.sm,
+    },
+    myRankTitle: {
+        fontFamily: Fonts.body.bold,
+        fontSize: FontSize.headline,
+        color: Colors.systemBlue,
+        textAlign: 'center',
+        marginBottom: Spacing.xs,
+    },
+    myRankSubtitle: {
+        fontFamily: Fonts.body.regular,
+        fontSize: FontSize.subhead,
+        color: Colors.secondaryLabel,
+        textAlign: 'center',
     },
 });
