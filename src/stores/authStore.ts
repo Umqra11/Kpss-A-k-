@@ -79,6 +79,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                         total_study_seconds: 0,
                         weekly_study_seconds: 0,
                         previous_weekly_study_seconds: 0,
+                        is_active: false,
+                        last_active_at: null,
                         created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString(),
                     },

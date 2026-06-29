@@ -1,31 +1,37 @@
 /**
- * KPSS Aşkı - Ana Kronometre Ekranı
+ * KPSS Aşkı - Ana Kronometre Ekranı (Apple-minimalist)
  */
 
 import React, { useCallback, useEffect } from 'react';
 import {
     View,
     Text,
-    TouchableOpacity,
     StyleSheet,
     SafeAreaView,
     ScrollView,
 } from 'react-native';
 import { Colors } from '../theme/colors';
-import { FontSize } from '../theme/typography';
+import { Fonts, FontSize } from '../theme/typography';
+import { Spacing } from '../theme/spacing';
 import { useTimerStore } from '../stores/timerStore';
 import { useAuthStore } from '../stores/authStore';
 import { useLeaderboardStore } from '../stores/leaderboardStore';
 import { TimerDisplay } from '../components/TimerDisplay';
 import { MilestonePopup } from '../components/MilestonePopup';
+import { StatTile } from '../components/StatTile';
+import { AppleButton } from '../components/AppleButton';
+import { SegmentedControl } from '../components/SegmentedControl';
+import { AppleCard } from '../components/AppleCard';
 import { formatDurationCompact, formatWithDays, getNextMilestone } from '../theme/milestones';
+
+type ViewMode = 'weekly' | 'total';
 
 export function MainScreen() {
     const status = useTimerStore((s) => s.status);
     const startTimer = useTimerStore((s) => s.startTimer);
     const pauseTimer = useTimerStore((s) => s.pauseTimer);
     const resumeTimer = useTimerStore((s) => s.resumeTimer);
-    const resetTimer = useTimerStore((s) => s.resetTimer);
+    const stopAndSubmitTimer = useTimerStore((s) => s.stopAndSubmitTimer);
     const loadTimerState = useTimerStore((s) => s.loadTimerState);
     const weeklyStudySeconds = useTimerStore((s) => s.weeklyStudySeconds);
     const totalStudySeconds = useTimerStore((s) => s.totalStudySeconds);
@@ -36,7 +42,7 @@ export function MainScreen() {
     const profile = useAuthStore((s) => s.profile);
     const fetchLeaderboard = useLeaderboardStore((s) => s.fetchLeaderboard);
 
-    const [showTotal, setShowTotal] = React.useState(false);
+    const [viewMode, setViewMode] = React.useState<ViewMode>('weekly');
 
     useEffect(() => {
         loadTimerState();
@@ -53,14 +59,17 @@ export function MainScreen() {
         }
     }, [status, startTimer, pauseTimer, resumeTimer]);
 
-    const handleReset = useCallback(async () => {
-        if (status !== 'idle') {
-            await resetTimer();
-        }
-    }, [status, resetTimer]);
+    const handleStopAndSubmit = useCallback(async () => {
+        await stopAndSubmitTimer();
+    }, [stopAndSubmitTimer]);
 
     const elapsedSeconds = Math.floor(getElapsedMs() / 1000);
     const nextMilestone = getNextMilestone(weeklyStudySeconds / 3600);
+
+    const segments = [
+        { key: 'weekly' as ViewMode, label: '📅 Haftalık' },
+        { key: 'total' as ViewMode, label: '📊 Toplam' },
+    ];
 
     return (
         <SafeAreaView style={styles.container}>
@@ -68,15 +77,13 @@ export function MainScreen() {
                 {/* Header */}
                 <View style={styles.header}>
                     <Text style={styles.username}>@{profile?.username || '...'}</Text>
-                    <TouchableOpacity
-                        style={styles.modeToggle}
-                        onPress={() => setShowTotal(!showTotal)}
-                        activeOpacity={0.7}
-                    >
-                        <Text style={styles.modeToggleText}>
-                            {showTotal ? '📊 Toplam' : '📅 Haftalık'}
-                        </Text>
-                    </TouchableOpacity>
+                    <View style={styles.segmentWrapper}>
+                        <SegmentedControl
+                            segments={segments}
+                            selected={viewMode}
+                            onSelect={setViewMode}
+                        />
+                    </View>
                 </View>
 
                 {/* Kronometre */}
@@ -84,60 +91,69 @@ export function MainScreen() {
 
                 {/* İstatistik Kartları */}
                 <View style={styles.statsRow}>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statLabel}>Bu Oturum</Text>
-                        <Text style={styles.statValue}>
-                            {formatDurationCompact(elapsedSeconds)}
-                        </Text>
-                    </View>
-                    <View style={[styles.statCard, styles.statCardHighlight]}>
-                        <Text style={styles.statLabel}>
-                            {showTotal ? 'Toplam' : 'Haftalık'}
-                        </Text>
-                        <Text style={[styles.statValue, styles.statValueHighlight]}>
-                            {showTotal
-                                ? formatWithDays(totalStudySeconds)
-                                : formatDurationCompact(weeklyStudySeconds)}
-                        </Text>
-                    </View>
+                    <StatTile
+                        label="Bu Oturum"
+                        value={formatDurationCompact(elapsedSeconds)}
+                    />
+                    <StatTile
+                        label={viewMode === 'weekly' ? 'Haftalık' : 'Toplam'}
+                        value={viewMode === 'weekly'
+                            ? formatDurationCompact(weeklyStudySeconds)
+                            : formatWithDays(totalStudySeconds)}
+                        highlight
+                    />
                 </View>
 
                 {/* Sonraki Baraj */}
                 {nextMilestone && (
-                    <View style={styles.nextMilestone}>
+                    <AppleCard style={styles.nextMilestone} variant="grouped">
                         <Text style={styles.nextMilestoneText}>
                             {nextMilestone.icon} Sonraki baraj: {nextMilestone.title} ({nextMilestone.hours} saat)
                         </Text>
-                    </View>
+                    </AppleCard>
                 )}
 
                 {/* Kontrol Butonları */}
                 <View style={styles.controlRow}>
-                    {status !== 'idle' && (
-                        <TouchableOpacity
-                            style={styles.resetButton}
-                            onPress={handleReset}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={styles.resetButtonText}>🔄 Sıfırla</Text>
-                        </TouchableOpacity>
+                    {/* Çalışmayı Bitir butonu - sadece running/paused durumunda */}
+                    {(status === 'running' || status === 'paused') && (
+                        <AppleButton
+                            title="⏹ Çalışmayı Bitir"
+                            onPress={handleStopAndSubmit}
+                            variant="destructive"
+                            size="medium"
+                            style={styles.stopButton}
+                        />
                     )}
 
-                    <TouchableOpacity
-                        style={[
-                            styles.mainButton,
-                            status === 'running' && styles.mainButtonActive,
-                            status === 'paused' && styles.mainButtonPaused,
-                        ]}
-                        onPress={handleMainButton}
-                        activeOpacity={0.8}
-                    >
-                        <Text style={styles.mainButtonText}>
-                            {status === 'idle' && '▶ BAŞLAT'}
-                            {status === 'running' && '⏸ DURAKLAT'}
-                            {status === 'paused' && '▶ DEVAM'}
-                        </Text>
-                    </TouchableOpacity>
+                    {/* Ana buton */}
+                    {status === 'idle' && (
+                        <AppleButton
+                            title="▶ Başlat"
+                            onPress={handleMainButton}
+                            variant="primary"
+                            size="large"
+                            style={styles.mainButton}
+                        />
+                    )}
+                    {status === 'running' && (
+                        <AppleButton
+                            title="⏸ Duraklat"
+                            onPress={handleMainButton}
+                            variant="secondary"
+                            size="large"
+                            style={styles.mainButton}
+                        />
+                    )}
+                    {status === 'paused' && (
+                        <AppleButton
+                            title="▶ Devam"
+                            onPress={handleMainButton}
+                            variant="primary"
+                            size="large"
+                            style={styles.mainButton}
+                        />
+                    )}
                 </View>
             </ScrollView>
 
@@ -150,12 +166,12 @@ export function MainScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Colors.backgroundSecondary,
+        backgroundColor: Colors.systemBackground,
     },
     scrollContent: {
         flexGrow: 1,
-        paddingHorizontal: 24,
-        paddingTop: 16,
+        paddingHorizontal: Spacing.xl,
+        paddingTop: Spacing.md,
         paddingBottom: 40,
         alignItems: 'center',
         justifyContent: 'center',
@@ -166,120 +182,41 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         width: '100%',
-        marginBottom: 32,
+        marginBottom: Spacing.xxl,
     },
     username: {
-        fontFamily: 'Satoshi-Bold',
-        fontSize: FontSize.lg,
-        color: Colors.primaryLight,
+        fontFamily: Fonts.display.bold,
+        fontSize: FontSize.title3,
+        color: Colors.label,
     },
-    modeToggle: {
-        backgroundColor: Colors.surface,
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    modeToggleText: {
-        fontFamily: 'Satoshi-Medium',
-        fontSize: FontSize.sm,
-        color: Colors.textPrimary,
+    segmentWrapper: {
+        maxWidth: 200,
     },
     statsRow: {
         flexDirection: 'row',
-        gap: 12,
-        marginTop: 32,
+        gap: Spacing.sm,
+        marginTop: Spacing.xxl,
         width: '100%',
     },
-    statCard: {
-        flex: 1,
-        backgroundColor: Colors.surface,
-        borderRadius: 16,
-        padding: 16,
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    statCardHighlight: {
-        borderColor: Colors.primary,
-        backgroundColor: Colors.surfaceLight,
-    },
-    statLabel: {
-        fontFamily: 'Satoshi-Regular',
-        fontSize: FontSize.xs,
-        color: Colors.textMuted,
-        marginBottom: 6,
-        textTransform: 'uppercase',
-        letterSpacing: 1,
-    },
-    statValue: {
-        fontFamily: 'ClashDisplay-Bold',
-        fontSize: FontSize.xl,
-        color: Colors.textPrimary,
-    },
-    statValueHighlight: {
-        color: Colors.secondary,
-    },
     nextMilestone: {
-        marginTop: 20,
-        backgroundColor: Colors.surface,
-        borderRadius: 12,
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderWidth: 1,
-        borderColor: Colors.secondaryDark,
+        marginTop: Spacing.lg,
+        width: '100%',
     },
     nextMilestoneText: {
-        fontFamily: 'Satoshi-Medium',
-        fontSize: FontSize.sm,
-        color: Colors.secondaryLight,
+        fontFamily: Fonts.body.semibold,
+        fontSize: FontSize.subhead,
+        color: Colors.systemOrange,
         textAlign: 'center',
     },
     controlRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 16,
-        marginTop: 40,
+        marginTop: Spacing.xxxl,
+        gap: Spacing.sm,
+        width: '100%',
     },
-    resetButton: {
-        backgroundColor: Colors.surface,
-        paddingHorizontal: 24,
-        paddingVertical: 16,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    resetButtonText: {
-        fontFamily: 'Satoshi-Bold',
-        fontSize: FontSize.base,
-        color: Colors.textSecondary,
+    stopButton: {
+        marginBottom: Spacing.xs,
     },
     mainButton: {
-        flex: 1,
-        backgroundColor: Colors.accent,
-        paddingVertical: 20,
-        borderRadius: 24,
-        alignItems: 'center',
-        shadowColor: Colors.accent,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 16,
-        elevation: 8,
-        minWidth: 160,
-    },
-    mainButtonActive: {
-        backgroundColor: Colors.secondary,
-        shadowColor: Colors.secondary,
-    },
-    mainButtonPaused: {
-        backgroundColor: Colors.primary,
-        shadowColor: Colors.primary,
-    },
-    mainButtonText: {
-        fontFamily: 'ClashDisplay-Bold',
-        fontSize: FontSize.lg,
-        color: Colors.textPrimary,
-        letterSpacing: 2,
+        width: '100%',
     },
 });

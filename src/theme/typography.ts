@@ -1,6 +1,6 @@
 /**
- * KPSS Aşkı - Tipografi Sistemi
- * Clash Display (display) + Satoshi (body)
+ * KPSS Aşkı - Apple Minimalist Tipografi
+ * iOS Dynamic Type Scale
  */
 
 export const Fonts = {
@@ -18,25 +18,34 @@ export const Fonts = {
     },
 } as const;
 
+// iOS Dynamic Type Scale
 export const FontSize = {
-    xs: 11,
-    sm: 13,
-    base: 15,
-    md: 17,
-    lg: 20,
-    xl: 24,
-    '2xl': 32,
-    '3xl': 40,
-    '4xl': 52,
-    '5xl': 68,
-    '6xl': 84,
+    largeTitle: 34,
+    title1: 28,
+    title2: 22,
+    title3: 20,
+    headline: 17,
+    body: 17,
+    callout: 16,
+    subhead: 15,
+    footnote: 13,
+    caption1: 12,
+    caption2: 11,
 } as const;
 
 export const LineHeight = {
     tight: 1.1,
     snug: 1.25,
-    normal: 1.5,
-    relaxed: 1.75,
+    normal: 1.35,
+    relaxed: 1.5,
 } as const;
+
+export const FontWeight = {
+    regular: '400' as const,
+    medium: '500' as const,
+    semibold: '600' as const,
+    bold: '700' as const,
+    heavy: '800' as const,
+};
 
 export type FontFamily = keyof typeof Fonts;

@@ -11,6 +11,8 @@ export interface Profile {
     total_study_seconds: number;
     weekly_study_seconds: number;
     previous_weekly_study_seconds: number;
+    is_active: boolean;
+    last_active_at: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -25,6 +27,7 @@ export interface StudySession {
     date: string;
     week_start: string;
     status: 'active' | 'paused' | 'completed';
+    submitted_at: string | null;
     created_at: string;
 }
 
@@ -55,6 +58,8 @@ export interface LeaderboardEntry {
     avatar_url: string | null;
     study_seconds: number;
     rank: number;
+    is_active?: boolean;
+    last_active_at?: string | null;
 }
 
 // Kronometre durumu

@@ -1,89 +1,41 @@
-/**
- * KPSS Aşkı - Kronometre Gösterimi
- */
-
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '../theme/colors';
 import { Fonts, FontSize } from '../theme/typography';
 import { useTimerStore } from '../stores/timerStore';
-import { formatDuration } from '../theme/milestones';
 
 export function TimerDisplay() {
     const getElapsedMs = useTimerStore((s) => s.getElapsedMs);
     const status = useTimerStore((s) => s.status);
+
     const [display, setDisplay] = useState('00:00:00');
-    const pulseAnim = useRef(new Animated.Value(1)).current;
-    const frameRef = useRef<number | null>(null);
 
-    // Animasyonlu pulse efekti (running iken)
     useEffect(() => {
-        if (status === 'running') {
-            const pulse = Animated.loop(
-                Animated.sequence([
-                    Animated.timing(pulseAnim, {
-                        toValue: 1.02,
-                        duration: 1000,
-                        easing: Easing.inOut(Easing.ease),
-                        useNativeDriver: true,
-                    }),
-                    Animated.timing(pulseAnim, {
-                        toValue: 1,
-                        duration: 1000,
-                        easing: Easing.inOut(Easing.ease),
-                        useNativeDriver: true,
-                    }),
-                ])
-            );
-            pulse.start();
-            return () => pulse.stop();
-        } else {
-            pulseAnim.setValue(1);
-        }
-    }, [status, pulseAnim]);
-
-    // 100ms'de bir ekranı güncelle (pürüzsüz kronometre)
-    useEffect(() => {
-        function updateDisplay() {
+        const interval = setInterval(() => {
             const ms = getElapsedMs();
             const totalSeconds = Math.floor(ms / 1000);
-            setDisplay(formatDuration(totalSeconds));
-            frameRef.current = requestAnimationFrame(updateDisplay);
-        }
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
 
-        if (status === 'running') {
-            frameRef.current = requestAnimationFrame(updateDisplay);
-        } else {
-            const ms = getElapsedMs();
-            const totalSeconds = Math.floor(ms / 1000);
-            setDisplay(formatDuration(totalSeconds));
-        }
+            const hh = hours.toString().padStart(2, '0');
+            const mm = minutes.toString().padStart(2, '0');
+            const ss = seconds.toString().padStart(2, '0');
 
-        return () => {
-            if (frameRef.current) {
-                cancelAnimationFrame(frameRef.current);
-            }
-        };
-    }, [status, getElapsedMs]);
+            setDisplay(`${hh}:${mm}:${ss}`);
+        }, 100);
 
-    const isActive = status === 'running';
+        return () => clearInterval(interval);
+    }, [getElapsedMs]);
 
     return (
         <View style={styles.container}>
-            <Animated.Text
-                style={[
-                    styles.timer,
-                    {
-                        color: isActive ? Colors.primaryLight : Colors.textPrimary,
-                        transform: [{ scale: pulseAnim }],
-                    },
-                ]}
-            >
+            <Text style={styles.timer} numberOfLines={1} adjustsFontSizeToFit>
                 {display}
-            </Animated.Text>
-            <Text style={styles.label}>
-                saat : dakika : saniye
             </Text>
+            {status === 'paused' && (
+                <Text style={styles.pausedLabel}>Duraklatıldı</Text>
+            )}
         </View>
     );
 }
@@ -91,24 +43,19 @@ export function TimerDisplay() {
 const styles = StyleSheet.create({
     container: {
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 20,
+        paddingVertical: 40,
     },
     timer: {
-        fontFamily: 'ClashDisplay-Bold',
-        fontSize: 58,
-        letterSpacing: 4,
+        fontFamily: Fonts.display.bold,
+        fontSize: 72,
+        color: Colors.label,
+        letterSpacing: 2,
         fontVariant: ['tabular-nums'],
-        textShadowColor: 'rgba(124, 58, 237, 0.3)',
-        textShadowOffset: { width: 0, height: 0 },
-        textShadowRadius: 20,
     },
-    label: {
-        fontFamily: 'Satoshi-Regular',
-        fontSize: FontSize.xs,
-        color: Colors.textMuted,
+    pausedLabel: {
+        fontFamily: Fonts.body.bold,
+        fontSize: FontSize.footnote,
+        color: Colors.systemOrange,
         marginTop: 8,
-        letterSpacing: 6,
-        textTransform: 'uppercase',
     },
 });

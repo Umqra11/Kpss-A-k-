@@ -1,10 +1,13 @@
 /**
  * KPSS Aşkı - Kronometre Store'u
  * Timestamp-based yaklaşım: Uygulama kill edilse bile doğru süre hesaplanır
+ * 
+ * v2: stopAndSubmitTimer, online presence, periyodik sync, AppState handler
  */
 
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState, AppStateStatus } from 'react-native';
 import { TimerState, TimerStatus } from '../types';
 import { supabase, getTodayDate, getCurrentWeekStart } from '../services/supabase';
 
@@ -17,12 +20,15 @@ interface TimerStore extends TimerState {
     totalStudySeconds: number;
     milestonesEarnedThisWeek: number[];
     lastMilestonePopup: { icon: string; title: string; message: string } | null;
+    _syncInterval: ReturnType<typeof setInterval> | null;
+    _appStateSubscription: any;
 
     // Actions
     startTimer: () => Promise<void>;
     pauseTimer: () => Promise<void>;
     resetTimer: () => Promise<void>;
     resumeTimer: () => Promise<void>;
+    stopAndSubmitTimer: () => Promise<void>;
     getElapsedMs: () => number;
     loadTimerState: () => Promise<void>;
     saveTimerState: () => Promise<void>;
@@ -30,6 +36,9 @@ interface TimerStore extends TimerState {
     checkMilestone: () => Promise<void>;
     syncWithSupabase: () => Promise<void>;
     computeStudyStats: () => void;
+    _startPeriodicSync: () => void;
+    _stopPeriodicSync: () => void;
+    _setupAppStateHandler: () => void;
 }
 
 function getNow(): number {
@@ -46,6 +55,8 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     totalStudySeconds: 0,
     milestonesEarnedThisWeek: [],
     lastMilestonePopup: null,
+    _syncInterval: null,
+    _appStateSubscription: null,
 
     startTimer: async () => {
         const state = get();
@@ -73,10 +84,20 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                     week_start: getCurrentWeekStart(),
                     status: 'active',
                 } as any);
+
+                // Online presence: kullanıcıyı aktif işaretle
+                await supabase.from('profiles').update({
+                    is_active: true,
+                    last_active_at: new Date().toISOString(),
+                } as any).eq('id', user.id);
             } catch (err) {
                 // Offline çalışmaya devam
             }
         }
+
+        // Periyodik sync ve AppState handler'ı başlat
+        get()._startPeriodicSync();
+        get()._setupAppStateHandler();
     },
 
     pauseTimer: async () => {
@@ -107,6 +128,77 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
             status: 'running',
         });
 
+        await get().saveTimerState();
+    },
+
+    stopAndSubmitTimer: async () => {
+        const { status } = get();
+        if (status === 'idle') return;
+
+        const elapsedMs = get().getElapsedMs();
+        const elapsedSeconds = Math.floor(elapsedMs / 1000);
+
+        const { useAuthStore } = await import('./authStore');
+        const user = useAuthStore.getState().user;
+
+        if (user) {
+            try {
+                const now = new Date().toISOString();
+
+                // Aktif oturumu bul ve tamamla
+                const { data: sessions } = await supabase
+                    .from('study_sessions')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .eq('status', 'active')
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                if (sessions && sessions.length > 0) {
+                    await supabase
+                        .from('study_sessions')
+                        .update({
+                            end_time: now,
+                            duration_seconds: elapsedSeconds,
+                            status: 'completed',
+                            submitted_at: now,
+                        } as any)
+                        .eq('id', sessions[0].id);
+                }
+
+                // Profili güncelle ve aktif durumdan çıkar
+                const state = get();
+                await supabase
+                    .from('profiles')
+                    .update({
+                        weekly_study_seconds: state.weeklyStudySeconds,
+                        total_study_seconds: state.totalStudySeconds,
+                        is_active: false,
+                        last_active_at: now,
+                    } as any)
+                    .eq('id', user.id);
+
+                // Auth store'daki profili yenile
+                await useAuthStore.getState().refreshProfile();
+
+                // Leaderboard'u yenile
+                const { useLeaderboardStore } = await import('./leaderboardStore');
+                await useLeaderboardStore.getState().fetchLeaderboard();
+            } catch (err) {
+                // Offline - sessiz
+            }
+        }
+
+        // State'i sıfırla
+        set({
+            startTime: null,
+            accumulatedMs: 0,
+            status: 'idle',
+            sessionStartTime: null,
+        });
+
+        get().computeStudyStats();
+        get()._stopPeriodicSync();
         await get().saveTimerState();
     },
 
@@ -141,6 +233,12 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                             .eq('id', s.id);
                     }
                 }
+
+                // Aktif durumdan çıkar
+                await supabase.from('profiles').update({
+                    is_active: false,
+                    last_active_at: now,
+                } as any).eq('id', user.id);
             } catch (err) {
                 // Offline
             }
@@ -154,6 +252,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         });
 
         get().computeStudyStats();
+        get()._stopPeriodicSync();
         await get().saveTimerState();
     },
 
@@ -171,13 +270,14 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
             if (stored) {
                 const state: TimerState = JSON.parse(stored);
 
-                // Eğer uygulama kapatılıp açıldıysa ve timer running ise
                 if (state.status === 'running' && state.startTime) {
-                    // Süreyi doğru hesapla (timestamp-based)
                     set({
                         ...state,
                         status: 'running',
                     });
+                    // Timer running ise sync'i yeniden başlat
+                    get()._startPeriodicSync();
+                    get()._setupAppStateHandler();
                 } else if (state.status === 'paused') {
                     set({
                         ...state,
@@ -193,7 +293,6 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                 }
             }
 
-            // Kazanılan milestone'ları yükle
             const storedMilestones = await AsyncStorage.getItem(MILESTONES_EARNED_KEY);
             if (storedMilestones) {
                 set({ milestonesEarnedThisWeek: JSON.parse(storedMilestones) });
@@ -222,10 +321,8 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         const { weeklyStudySeconds, milestonesEarnedThisWeek } = get();
         const weeklyHours = Math.floor(weeklyStudySeconds / 3600);
 
-        // 24 baraj var, 1'den 24'e kadar
         for (let h = 1; h <= 24; h++) {
             if (weeklyHours >= h && !milestonesEarnedThisWeek.includes(h)) {
-                // Bu milestone henüz kazanılmamış
                 const { MILESTONES } = await import('../theme/milestones');
                 const milestone = MILESTONES.find((m) => m.hours === h);
                 if (milestone) {
@@ -239,7 +336,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                         },
                     });
                     await get().saveTimerState();
-                    break; // Her seferinde sadece bir popup
+                    break;
                 }
             }
         }
@@ -283,7 +380,6 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                 } as any)
                 .eq('id', user.id);
 
-            // Auth store'daki profili de yenile
             await useAuthStore.getState().refreshProfile();
         } catch (err) {
             // Offline - sessiz
@@ -297,12 +393,11 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         const elapsedSeconds = Math.floor(get().getElapsedMs() / 1000);
 
         if (profile) {
-            // Haftalık süre: önceki haftalık + bu oturum
             const weekly = profile.weekly_study_seconds + elapsedSeconds;
             const total = profile.total_study_seconds + elapsedSeconds;
 
             set({
-                dailyStudySeconds: profile.weekly_study_seconds + elapsedSeconds, // Basitleştirilmiş (gerçek günlük hesaplama için backend kullan)
+                dailyStudySeconds: profile.weekly_study_seconds + elapsedSeconds,
                 weeklyStudySeconds: weekly,
                 totalStudySeconds: total,
             });
@@ -312,5 +407,58 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                 totalStudySeconds: elapsedSeconds,
             });
         }
+    },
+
+    _startPeriodicSync: () => {
+        const store = get() as any;
+        if (store._syncInterval) clearInterval(store._syncInterval);
+
+        const interval = setInterval(async () => {
+            const state = get();
+            if (state.status === 'running' || state.status === 'paused') {
+                get().computeStudyStats();
+                await get().syncWithSupabase();
+            }
+        }, 30000);
+
+        set({ _syncInterval: interval } as any);
+    },
+
+    _stopPeriodicSync: () => {
+        const store = get() as any;
+        if (store._syncInterval) {
+            clearInterval(store._syncInterval);
+            set({ _syncInterval: null } as any);
+        }
+    },
+
+    _setupAppStateHandler: () => {
+        // Mevcut subscription'ı temizle
+        const existing = get()._appStateSubscription;
+        if (existing && existing.remove) {
+            existing.remove();
+        }
+
+        const handleChange = async (nextState: AppStateStatus) => {
+            const state = get();
+            if (nextState === 'active') {
+                if (state.status === 'running' || state.status === 'paused') {
+                    const { useAuthStore } = await import('./authStore');
+                    const user = useAuthStore.getState().user;
+                    if (user) {
+                        await supabase.from('profiles').update({
+                            is_active: true,
+                            last_active_at: new Date().toISOString(),
+                        } as any).eq('id', user.id);
+                    }
+                    get()._startPeriodicSync();
+                }
+            } else if (nextState === 'background' || nextState === 'inactive') {
+                get()._stopPeriodicSync();
+            }
+        };
+
+        const subscription = AppState.addEventListener('change', handleChange);
+        set({ _appStateSubscription: subscription } as any);
     },
 }));

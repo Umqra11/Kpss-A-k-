@@ -1,6 +1,7 @@
 /**
  * KPSS Aşkı - Leaderboard Store'u
  * Gerçek zamanlı Supabase subscription ile anlık sıralama
+ * v2: Aktif kullanıcı takibi eklendi
  */
 
 import { create } from 'zustand';
@@ -11,6 +12,7 @@ interface LeaderboardState {
     mode: LeaderboardMode;
     weeklyEntries: LeaderboardEntry[];
     totalEntries: LeaderboardEntry[];
+    activeUsers: LeaderboardEntry[];
     currentUserWeeklyRank: number | null;
     currentUserTotalRank: number | null;
     isLoading: boolean;
@@ -18,13 +20,16 @@ interface LeaderboardState {
 
     setMode: (mode: LeaderboardMode) => void;
     fetchLeaderboard: () => Promise<void>;
-    subscribeToLeaderboard: () => () => void; // unsubscribe fonksiyonu döner
+    subscribeToLeaderboard: () => () => void;
+    fetchActiveUsers: () => Promise<void>;
+    subscribeToActiveUsers: () => () => void;
 }
 
 export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
     mode: 'weekly',
     weeklyEntries: [],
     totalEntries: [],
+    activeUsers: [],
     currentUserWeeklyRank: null,
     currentUserTotalRank: null,
     isLoading: false,
@@ -38,10 +43,10 @@ export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
         try {
             const weekStart = getCurrentWeekStart();
 
-            // Haftalık leaderboard
+            // Haftalık leaderboard (is_active ve last_active_at dahil)
             const { data: weeklyData, error: weeklyError } = await supabase
                 .from('profiles')
-                .select('id, username, avatar_url, weekly_study_seconds')
+                .select('id, username, avatar_url, weekly_study_seconds, is_active, last_active_at')
                 .gt('weekly_study_seconds', 0)
                 .order('weekly_study_seconds', { ascending: false })
                 .limit(50);
@@ -55,13 +60,15 @@ export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
                     avatar_url: entry.avatar_url,
                     study_seconds: entry.weekly_study_seconds,
                     rank: index + 1,
+                    is_active: entry.is_active ?? false,
+                    last_active_at: entry.last_active_at ?? null,
                 })
             );
 
-            // Toplam leaderboard
+            // Toplam leaderboard (is_active ve last_active_at dahil)
             const { data: totalData, error: totalError } = await supabase
                 .from('profiles')
-                .select('id, username, avatar_url, total_study_seconds')
+                .select('id, username, avatar_url, total_study_seconds, is_active, last_active_at')
                 .gt('total_study_seconds', 0)
                 .order('total_study_seconds', { ascending: false })
                 .limit(50);
@@ -75,6 +82,8 @@ export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
                     avatar_url: entry.avatar_url,
                     study_seconds: entry.total_study_seconds,
                     rank: index + 1,
+                    is_active: entry.is_active ?? false,
+                    last_active_at: entry.last_active_at ?? null,
                 })
             );
 
@@ -109,7 +118,6 @@ export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
     },
 
     subscribeToLeaderboard: () => {
-        // Weekly değişiklikleri dinle
         const weeklyChannel = supabase
             .channel('weekly-leaderboard')
             .on(
@@ -118,16 +126,14 @@ export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
                     event: '*',
                     schema: 'public',
                     table: 'profiles',
-                    filter: `weekly_study_seconds=gt.0`,
+                    filter: 'weekly_study_seconds=gt.0',
                 },
                 () => {
-                    // Değişiklik olduğunda yeniden fetch et
                     get().fetchLeaderboard();
                 }
             )
             .subscribe();
 
-        // Total değişiklikleri dinle
         const totalChannel = supabase
             .channel('total-leaderboard')
             .on(
@@ -136,7 +142,7 @@ export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
                     event: '*',
                     schema: 'public',
                     table: 'profiles',
-                    filter: `total_study_seconds=gt.0`,
+                    filter: 'total_study_seconds=gt.0',
                 },
                 () => {
                     get().fetchLeaderboard();
@@ -144,10 +150,58 @@ export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
             )
             .subscribe();
 
-        // Cleanup fonksiyonu
         return () => {
             weeklyChannel.unsubscribe();
             totalChannel.unsubscribe();
+        };
+    },
+
+    fetchActiveUsers: async () => {
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('id, username, avatar_url, weekly_study_seconds, is_active, last_active_at')
+                .eq('is_active', true)
+                .order('weekly_study_seconds', { ascending: false })
+                .limit(10);
+
+            if (error) throw error;
+
+            const activeUsers: LeaderboardEntry[] = (data || []).map((entry: any) => ({
+                user_id: entry.id,
+                username: entry.username,
+                avatar_url: entry.avatar_url,
+                study_seconds: entry.weekly_study_seconds,
+                rank: 0,
+                is_active: entry.is_active ?? true,
+                last_active_at: entry.last_active_at ?? null,
+            }));
+
+            set({ activeUsers });
+        } catch (err) {
+            // Sessiz
+        }
+    },
+
+    subscribeToActiveUsers: () => {
+        const channel = supabase
+            .channel('active-users')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'profiles',
+                    filter: 'is_active=eq.true',
+                },
+                () => {
+                    get().fetchActiveUsers();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            channel.unsubscribe();
         };
     },
 }));

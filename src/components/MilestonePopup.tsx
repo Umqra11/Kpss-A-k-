@@ -1,106 +1,71 @@
 /**
- * KPSS Aşkı - Motivasyon Popup Bileşeni
+ * KPSS Aşkı - Milestone Popup (Apple-minimalist)
  */
-
-import React, { useEffect, useRef } from 'react';
-import {
-    View,
-    Text,
-    StyleSheet,
-    Animated,
-    TouchableOpacity,
-    Dimensions,
-} from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableWithoutFeedback } from 'react-native';
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withSpring,
+    withTiming,
+    runOnJS,
+} from 'react-native-reanimated';
 import { Colors } from '../theme/colors';
 import { Fonts, FontSize } from '../theme/typography';
+import { Spacing, Radius } from '../theme/spacing';
 import { useTimerStore } from '../stores/timerStore';
-
-const { width } = Dimensions.get('window');
 
 export function MilestonePopup() {
     const lastMilestonePopup = useTimerStore((s) => s.lastMilestonePopup);
     const dismissMilestone = useTimerStore((s) => s.dismissMilestone);
 
-    const scaleAnim = useRef(new Animated.Value(0)).current;
-    const opacityAnim = useRef(new Animated.Value(0)).current;
+    const scale = useSharedValue(0);
+    const overlayOpacity = useSharedValue(0);
 
     useEffect(() => {
-        if (lastMilestonePopup) {
-            // Giriş animasyonu
-            Animated.parallel([
-                Animated.spring(scaleAnim, {
-                    toValue: 1,
-                    friction: 6,
-                    tension: 80,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(opacityAnim, {
-                    toValue: 1,
-                    duration: 300,
-                    useNativeDriver: true,
-                }),
-            ]).start();
-
-            // 4 saniye sonra otomatik kapan
-            const timeout = setTimeout(() => {
-                handleDismiss();
-            }, 4000);
-
-            return () => clearTimeout(timeout);
-        } else {
-            scaleAnim.setValue(0);
-            opacityAnim.setValue(0);
-        }
-    }, [lastMilestonePopup]);
+        scale.value = withSpring(1, { damping: 12, stiffness: 120 });
+        overlayOpacity.value = withTiming(1, { duration: 300 });
+    }, []);
 
     const handleDismiss = () => {
-        Animated.parallel([
-            Animated.timing(scaleAnim, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-            }),
-            Animated.timing(opacityAnim, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-            }),
-        ]).start(() => {
-            dismissMilestone();
+        scale.value = withSpring(0, { damping: 15, stiffness: 150 }, () => {
+            runOnJS(dismissMilestone)();
         });
     };
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
+
+    const overlayStyle = useAnimatedStyle(() => ({
+        opacity: overlayOpacity.value,
+    }));
 
     if (!lastMilestonePopup) return null;
 
     return (
-        <View style={styles.overlay}>
-            <TouchableOpacity style={styles.backdrop} onPress={handleDismiss} activeOpacity={1} />
-            <Animated.View
-                style={[
-                    styles.popup,
-                    {
-                        transform: [{ scale: scaleAnim }],
-                        opacity: opacityAnim,
-                    },
-                ]}
-            >
+        <View style={styles.wrapper}>
+            <Animated.View style={[styles.overlay, overlayStyle]}>
+                <TouchableWithoutFeedback onPress={handleDismiss}>
+                    <View style={styles.overlayTouchable} />
+                </TouchableWithoutFeedback>
+            </Animated.View>
+            <Animated.View style={[styles.card, animatedStyle]}>
                 <Text style={styles.icon}>{lastMilestonePopup.icon}</Text>
                 <Text style={styles.title}>{lastMilestonePopup.title}</Text>
                 <Text style={styles.message}>{lastMilestonePopup.message}</Text>
-                <TouchableOpacity
-                    style={styles.button}
-                    onPress={handleDismiss}
-                    activeOpacity={0.7}
-                >
-                    <Text style={styles.buttonText}>🔥 Devam!</Text>
-                </TouchableOpacity>
+                <TouchableWithoutFeedback onPress={handleDismiss}>
+                    <View style={styles.button}>
+                        <Text style={styles.buttonText}>Harika!</Text>
+                    </View>
+                </TouchableWithoutFeedback>
             </Animated.View>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    overlay: {
+    wrapper: {
         position: 'absolute',
         top: 0,
         left: 0,
@@ -108,61 +73,61 @@ const styles = StyleSheet.create({
         bottom: 0,
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 100,
+        zIndex: 1000,
     },
-    backdrop: {
+    overlay: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: Colors.overlay,
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
     },
-    popup: {
-        backgroundColor: Colors.surface,
-        borderRadius: 24,
-        padding: 32,
-        width: width * 0.82,
-        maxWidth: 360,
+    overlayTouchable: {
+        flex: 1,
+    },
+    card: {
+        backgroundColor: Colors.systemBackground,
+        borderRadius: Radius.xl,
+        padding: Spacing.xxl,
+        marginHorizontal: Spacing.xl,
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.primaryDark,
-        shadowColor: Colors.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 20,
-        elevation: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.12,
+        shadowRadius: 32,
+        elevation: 8,
+        maxWidth: 320,
+        width: '100%',
     },
     icon: {
-        fontSize: 64,
-        marginBottom: 16,
+        fontSize: 56,
+        marginBottom: Spacing.md,
     },
     title: {
-        fontFamily: 'ClashDisplay-Bold',
-        fontSize: FontSize['2xl'],
-        color: Colors.textPrimary,
+        fontFamily: Fonts.display.bold,
+        fontSize: FontSize.title3,
+        color: Colors.label,
         textAlign: 'center',
-        marginBottom: 8,
+        marginBottom: Spacing.xs,
     },
     message: {
-        fontFamily: 'Satoshi-Regular',
-        fontSize: FontSize.md,
-        color: Colors.textSecondary,
+        fontFamily: Fonts.body.regular,
+        fontSize: FontSize.body,
+        color: Colors.secondaryLabel,
         textAlign: 'center',
-        lineHeight: 26,
-        marginBottom: 24,
+        lineHeight: 22,
+        marginBottom: Spacing.xl,
     },
     button: {
-        backgroundColor: Colors.primary,
-        paddingHorizontal: 32,
-        paddingVertical: 14,
-        borderRadius: 16,
-        minWidth: 160,
-        alignItems: 'center',
+        backgroundColor: Colors.systemBlue,
+        borderRadius: Radius.lg,
+        paddingVertical: Spacing.sm,
+        paddingHorizontal: Spacing.xxl,
     },
     buttonText: {
-        fontFamily: 'Satoshi-Bold',
-        fontSize: FontSize.md,
-        color: Colors.textPrimary,
+        fontFamily: Fonts.body.bold,
+        fontSize: FontSize.headline,
+        color: '#FFFFFF',
     },
 });

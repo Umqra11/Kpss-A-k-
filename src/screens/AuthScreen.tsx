@@ -1,187 +1,135 @@
 /**
- * KPSS Aşkı - Kayıt/Giriş Ekranı
+ * KPSS Aşkı - Giriş Ekranı (Apple-minimalist)
  */
-
 import React, { useState } from 'react';
 import {
     View,
     Text,
     TextInput,
-    TouchableOpacity,
     StyleSheet,
-    ActivityIndicator,
+    SafeAreaView,
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
 import { Colors } from '../theme/colors';
-import { FontSize } from '../theme/typography';
+import { Fonts, FontSize } from '../theme/typography';
+import { Spacing, Radius } from '../theme/spacing';
 import { useAuthStore } from '../stores/authStore';
+import { AppleButton } from '../components/AppleButton';
 
 export function AuthScreen() {
     const [username, setUsername] = useState('');
     const register = useAuthStore((s) => s.register);
+    const login = useAuthStore((s) => s.login);
     const isLoading = useAuthStore((s) => s.isLoading);
     const error = useAuthStore((s) => s.error);
     const clearError = useAuthStore((s) => s.clearError);
 
     const handleSubmit = async () => {
-        await register(username);
+        if (username.trim().length >= 3) {
+            await register(username.trim());
+        }
     };
 
+    React.useEffect(() => {
+        login();
+    }, []);
+
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-            <View style={styles.content}>
+        <SafeAreaView style={styles.container}>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.inner}
+            >
                 <View style={styles.header}>
-                    <Text style={styles.emoji}>🎯</Text>
+                    <Text style={styles.logo}>⏱️</Text>
                     <Text style={styles.title}>KPSS Aşkı</Text>
-                    <Text style={styles.subtitle}>Birlikte Daha Güçlüyüz</Text>
+                    <Text style={styles.subtitle}>
+                        Çalışma arkadaşlarınla birlikte{'\n'}daha motive çalış
+                    </Text>
                 </View>
 
                 <View style={styles.form}>
-                    <Text style={styles.label}>Kullanıcı adın nedir?</Text>
-                    <View style={styles.inputContainer}>
-                        <Text style={styles.inputIcon}>@</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={username}
-                            onChangeText={(t) => {
-                                setUsername(t.toLowerCase().replace(/[^a-z0-9_]/g, ''));
-                                if (error) clearError();
-                            }}
-                            placeholder="kullanici_adi"
-                            placeholderTextColor={Colors.textMuted}
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                            maxLength={30}
-                            editable={!isLoading}
-                        />
-                    </View>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Kullanıcı adı"
+                        placeholderTextColor={Colors.tertiaryLabel}
+                        value={username}
+                        onChangeText={(text) => {
+                            setUsername(text);
+                            if (error) clearError();
+                        }}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        maxLength={30}
+                        editable={!isLoading}
+                    />
+                    {error && <Text style={styles.error}>{error}</Text>}
 
-                    {error && (
-                        <Text style={styles.errorText}>{error}</Text>
-                    )}
-
-                    <TouchableOpacity
-                        style={[styles.button, username.length < 3 && styles.buttonDisabled]}
+                    <AppleButton
+                        title={isLoading ? 'Giriş yapılıyor...' : 'Başla'}
                         onPress={handleSubmit}
-                        disabled={isLoading || username.length < 3}
-                        activeOpacity={0.8}
-                    >
-                        {isLoading ? (
-                            <ActivityIndicator color={Colors.textPrimary} />
-                        ) : (
-                            <Text style={styles.buttonText}>🚀 BAŞLA</Text>
-                        )}
-                    </TouchableOpacity>
-
-                    <Text style={styles.hint}>
-                        Şifre yok! Bir kere kayıt ol,{' '}
-                        her zaman hatırlansın.
-                    </Text>
+                        variant="primary"
+                        size="large"
+                        disabled={isLoading || username.trim().length < 3}
+                        style={styles.button}
+                    />
                 </View>
-            </View>
-        </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Colors.background,
+        backgroundColor: Colors.systemBackground,
     },
-    content: {
+    inner: {
         flex: 1,
         justifyContent: 'center',
-        paddingHorizontal: 28,
+        paddingHorizontal: Spacing.xxl,
     },
     header: {
         alignItems: 'center',
-        marginBottom: 48,
+        marginBottom: Spacing.xxxl,
     },
-    emoji: {
-        fontSize: 56,
-        marginBottom: 16,
+    logo: {
+        fontSize: 64,
+        marginBottom: Spacing.md,
     },
     title: {
-        fontFamily: 'ClashDisplay-Bold',
-        fontSize: FontSize['3xl'],
-        color: Colors.textPrimary,
-        marginBottom: 8,
+        fontFamily: Fonts.display.bold,
+        fontSize: FontSize.largeTitle,
+        color: Colors.label,
+        marginBottom: Spacing.xs,
     },
     subtitle: {
-        fontFamily: 'Satoshi-Regular',
-        fontSize: FontSize.lg,
-        color: Colors.textSecondary,
+        fontFamily: Fonts.body.regular,
+        fontSize: FontSize.body,
+        color: Colors.secondaryLabel,
+        textAlign: 'center',
+        lineHeight: 22,
     },
     form: {
-        width: '100%',
-    },
-    label: {
-        fontFamily: 'Satoshi-Medium',
-        fontSize: FontSize.base,
-        color: Colors.textSecondary,
-        marginBottom: 12,
-    },
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: Colors.surface,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        marginBottom: 16,
-        paddingHorizontal: 16,
-    },
-    inputIcon: {
-        fontFamily: 'Satoshi-Bold',
-        fontSize: FontSize.lg,
-        color: Colors.primaryLight,
-        marginRight: 8,
+        gap: Spacing.md,
     },
     input: {
-        flex: 1,
-        fontFamily: 'Satoshi-Medium',
-        fontSize: FontSize.md,
-        color: Colors.textPrimary,
-        paddingVertical: 16,
+        backgroundColor: Colors.systemGray6,
+        borderRadius: Radius.md,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.md,
+        fontFamily: Fonts.body.regular,
+        fontSize: FontSize.body,
+        color: Colors.label,
     },
-    errorText: {
-        fontFamily: 'Satoshi-Regular',
-        fontSize: FontSize.sm,
-        color: Colors.error,
-        marginBottom: 12,
+    error: {
+        fontFamily: Fonts.body.regular,
+        fontSize: FontSize.footnote,
+        color: Colors.systemRed,
+        textAlign: 'center',
     },
     button: {
-        backgroundColor: Colors.primary,
-        borderRadius: 16,
-        paddingVertical: 18,
-        alignItems: 'center',
-        marginBottom: 16,
-        shadowColor: Colors.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
-        elevation: 6,
-    },
-    buttonDisabled: {
-        backgroundColor: Colors.buttonDisabled,
-        shadowOpacity: 0,
-        elevation: 0,
-    },
-    buttonText: {
-        fontFamily: 'ClashDisplay-Bold',
-        fontSize: FontSize.lg,
-        color: Colors.textPrimary,
-        letterSpacing: 2,
-    },
-    hint: {
-        fontFamily: 'Satoshi-Regular',
-        fontSize: FontSize.sm,
-        color: Colors.textMuted,
-        textAlign: 'center',
-        lineHeight: 20,
+        marginTop: Spacing.xs,
     },
 });
