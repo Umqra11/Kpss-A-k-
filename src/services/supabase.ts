@@ -49,30 +49,23 @@ export async function signUpWithUsername(username: string) {
             throw new Error('Bu kullanıcı adı zaten alınmış!');
         }
 
-        // Pasif profili reaktive et: eski id'yi yeni auth id ile güncelle
-        // NOT: Supabase anon auth'ta PK değişemez, o yüzden eski kaydı silip yeni kayıt oluşturacağız
+        // Pasif profili reaktive et: mevcut kaydı UPDATE ile yeni auth id, is_active=true yap
         const oldProfile = existingProfile;
 
-        // Eski profili sil (yeni auth id'si ile yeniden oluşturacağız)
-        await supabase.from('profiles').delete().eq('id', oldProfile.id);
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+                id: authData.user.id,
+                is_active: true,
+                last_active_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                current_room_id: null,
+            } as any)
+            .eq('id', oldProfile.id);
 
-        // Yeni auth id'si ile profili oluştur, eski verileri koru
-        const { error: insertError } = await supabase.from('profiles').insert({
-            id: authData.user.id,
-            username,
-            total_study_seconds: oldProfile.total_study_seconds || 0,
-            weekly_study_seconds: oldProfile.weekly_study_seconds || 0,
-            previous_weekly_study_seconds: oldProfile.previous_weekly_study_seconds || 0,
-            is_active: true,
-            last_active_at: new Date().toISOString(),
-            current_room_id: oldProfile.current_room_id,
-            created_at: oldProfile.created_at || new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-        } as any);
-
-        if (insertError) {
+        if (updateError) {
             await supabase.auth.signOut();
-            throw insertError;
+            throw updateError;
         }
 
         return {
