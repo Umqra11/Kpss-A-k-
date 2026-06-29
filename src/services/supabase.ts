@@ -49,33 +49,50 @@ export async function signUpWithUsername(username: string) {
             throw new Error('Bu kullanıcı adı zaten alınmış!');
         }
 
-        // Pasif profili reaktive et: mevcut kaydı UPDATE ile yeni auth id, is_active=true yap
-        const oldProfile = existingProfile;
+        // Pasif profili reaktive et: eski istatistikleri al, eski profili sil (cascade),
+        // yeni auth id ile yeni profil oluştur
+        const oldStats = {
+            total_study_seconds: existingProfile.total_study_seconds || 0,
+            weekly_study_seconds: existingProfile.weekly_study_seconds || 0,
+            previous_weekly_study_seconds: existingProfile.previous_weekly_study_seconds || 0,
+        };
+        const oldCreatedAt = existingProfile.created_at;
 
-        const { error: updateError } = await supabase
+        // Eski profili sil (cascade: room_members, study_sessions da silinir)
+        const { error: deleteError } = await supabase
             .from('profiles')
-            .update({
-                id: authData.user.id,
-                is_active: true,
-                last_active_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                current_room_id: null,
-            } as any)
-            .eq('id', oldProfile.id);
+            .delete()
+            .eq('id', existingProfile.id);
 
-        if (updateError) {
+        if (deleteError) {
             await supabase.auth.signOut();
-            throw updateError;
+            throw deleteError;
+        }
+
+        // Yeni profil oluştur, eski istatistikleri koru
+        const { error: insertError } = await supabase.from('profiles').insert({
+            id: authData.user.id,
+            username,
+            total_study_seconds: oldStats.total_study_seconds,
+            weekly_study_seconds: oldStats.weekly_study_seconds,
+            previous_weekly_study_seconds: oldStats.previous_weekly_study_seconds,
+            is_active: true,
+            last_active_at: new Date().toISOString(),
+            current_room_id: null,
+            created_at: oldCreatedAt || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        } as any);
+
+        if (insertError) {
+            await supabase.auth.signOut();
+            throw insertError;
         }
 
         return {
             user: authData.user,
             session: authData.session,
             reactivated: true,
-            previousStats: {
-                total_study_seconds: oldProfile.total_study_seconds || 0,
-                weekly_study_seconds: oldProfile.weekly_study_seconds || 0,
-            },
+            previousStats: oldStats,
         };
     }
 
