@@ -13,8 +13,33 @@ export interface Profile {
     previous_weekly_study_seconds: number;
     is_active: boolean;
     last_active_at: string | null;
+    current_room_id: string | null;
     created_at: string;
     updated_at: string;
+}
+
+// Oda
+export interface Room {
+    id: string;
+    name: string;
+    slug: string;
+    description: string;
+    created_by: string | null;
+    created_at: string;
+    member_count?: number;
+    active_member_count?: number;
+}
+
+// Oda üyesi
+export interface RoomMember {
+    user_id: string;
+    room_id: string;
+    username?: string;
+    display_name?: string | null;
+    avatar_url?: string | null;
+    weekly_study_seconds?: number;
+    is_active?: boolean;
+    joined_at: string;
 }
 
 // Çalışma oturumu
@@ -60,6 +85,7 @@ export interface LeaderboardEntry {
     rank: number;
     is_active?: boolean;
     last_active_at?: string | null;
+    room_id?: string;
 }
 
 // Kronometre durumu
@@ -85,4 +111,4 @@ export interface MilestoneConfig {
 export type LeaderboardMode = 'weekly' | 'total';
 
 // Navigasyon ekran isimleri
-export type ScreenName = 'Auth' | 'Main' | 'Leaderboard' | 'Profile';
+export type ScreenName = 'Auth' | 'RoomSelection' | 'Main' | 'Leaderboard' | 'Profile';

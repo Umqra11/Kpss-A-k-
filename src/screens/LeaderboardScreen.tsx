@@ -1,6 +1,7 @@
 /**
  * KPSS Aşkı - Leaderboard Ekranı (Apple-minimalist)
  * Haftalık / Tüm Zamanlar + Aktif Kullanıcılar
+ * v3: Oda bazlı - sadece bulunduğun odadaki kullanıcıları gösterir
  */
 
 import React, { useEffect } from 'react';
@@ -20,6 +21,7 @@ import { UserListItem } from '../components/UserListItem';
 import { PulseBadge } from '../components/PulseBadge';
 import { useLeaderboardStore } from '../stores/leaderboardStore';
 import { useAuthStore } from '../stores/authStore';
+import { useRoomStore } from '../stores/roomStore';
 import { LeaderboardEntry, LeaderboardMode } from '../types';
 import { formatDurationCompact, formatWithDays } from '../theme/milestones';
 
@@ -36,19 +38,27 @@ export function LeaderboardScreen() {
     const subscribeToActiveUsers = useLeaderboardStore((s) => s.subscribeToActiveUsers);
 
     const userId = useAuthStore((s) => s.user?.id);
+    const profile = useAuthStore((s) => s.profile);
+    const rooms = useRoomStore((s) => s.rooms);
+    const roomId = profile?.current_room_id;
+
+    // Oda adını bul
+    const roomName = rooms.find((r) => r.id === roomId)?.name || '';
 
     const entries = mode === 'weekly' ? weeklyEntries : totalEntries;
 
     useEffect(() => {
-        fetchLeaderboard();
-        fetchActiveUsers();
-        const unsub1 = subscribeToLeaderboard();
-        const unsub2 = subscribeToActiveUsers();
-        return () => {
-            unsub1();
-            unsub2();
-        };
-    }, [mode]);
+        if (roomId) {
+            fetchLeaderboard(roomId);
+            fetchActiveUsers(roomId);
+            const unsub1 = subscribeToLeaderboard(roomId);
+            const unsub2 = subscribeToActiveUsers(roomId);
+            return () => {
+                unsub1();
+                unsub2();
+            };
+        }
+    }, [mode, roomId]);
 
     const segments = [
         { key: 'weekly' as LeaderboardMode, label: '🏆 Haftalık' },
@@ -80,6 +90,13 @@ export function LeaderboardScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
+            {/* Oda başlığı */}
+            {roomName ? (
+                <View style={styles.roomHeader}>
+                    <Text style={styles.roomTitle}>🏠 {roomName}</Text>
+                </View>
+            ) : null}
+
             {/* Segmented Control */}
             <View style={styles.tabContainer}>
                 <SegmentedControl
@@ -92,7 +109,7 @@ export function LeaderboardScreen() {
             {/* Aktif Kullanıcılar Bölümü */}
             {activeUsers.length > 0 && (
                 <View style={styles.activeSection}>
-                    <Text style={styles.sectionTitle}>🟢 Şu An Çalışanlar</Text>
+                    <Text style={styles.sectionTitle}>🟢 Şu An Bu Odada Çalışanlar</Text>
                     {activeUsers.slice(0, 5).map((user) => (
                         <UserListItem
                             key={user.user_id}
@@ -122,7 +139,7 @@ export function LeaderboardScreen() {
                     showsVerticalScrollIndicator={false}
                     ListHeaderComponent={
                         entries.length > 0 ? (
-                            <Text style={styles.sectionTitle}>🏆 Sıralama</Text>
+                            <Text style={styles.sectionTitle}>🏆 Oda Sıralaması</Text>
                         ) : null
                     }
                 />
@@ -136,9 +153,20 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.systemBackground,
     },
-    tabContainer: {
+    roomHeader: {
         paddingHorizontal: Spacing.xl,
         paddingTop: Spacing.md,
+        paddingBottom: Spacing.xs,
+        alignItems: 'center',
+    },
+    roomTitle: {
+        fontFamily: Fonts.display.bold,
+        fontSize: FontSize.title2,
+        color: Colors.label,
+    },
+    tabContainer: {
+        paddingHorizontal: Spacing.xl,
+        paddingTop: Spacing.sm,
         paddingBottom: Spacing.sm,
     },
     activeSection: {

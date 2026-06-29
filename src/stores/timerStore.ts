@@ -3,6 +3,7 @@
  * Timestamp-based yaklaşım: Uygulama kill edilse bile doğru süre hesaplanır
  * 
  * v2: stopAndSubmitTimer, online presence, periyodik sync, AppState handler
+ * v4: Hafta sınırı tespiti - Salı 00:00'da oturumu böl, süreler doğru haftaya yazılsın
  */
 
 import { create } from 'zustand';
@@ -22,6 +23,8 @@ interface TimerStore extends TimerState {
     lastMilestonePopup: { icon: string; title: string; message: string } | null;
     _syncInterval: ReturnType<typeof setInterval> | null;
     _appStateSubscription: any;
+    _sessionWeekStart: string | null;
+    _postResetAccumulatedMs: number;
 
     // Actions
     startTimer: () => Promise<void>;
@@ -36,6 +39,7 @@ interface TimerStore extends TimerState {
     checkMilestone: () => Promise<void>;
     syncWithSupabase: () => Promise<void>;
     computeStudyStats: () => void;
+    _handleWeekBoundary: () => Promise<void>;
     _startPeriodicSync: () => void;
     _stopPeriodicSync: () => void;
     _setupAppStateHandler: () => void;
@@ -57,6 +61,8 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     lastMilestonePopup: null,
     _syncInterval: null,
     _appStateSubscription: null,
+    _sessionWeekStart: null,
+    _postResetAccumulatedMs: 0,
 
     startTimer: async () => {
         const state = get();
@@ -67,7 +73,9 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
             accumulatedMs: 0,
             status: 'running',
             sessionStartTime: new Date().toISOString(),
-        });
+            _sessionWeekStart: getCurrentWeekStart(),
+            _postResetAccumulatedMs: 0,
+        } as any);
 
         await get().saveTimerState();
 
@@ -181,9 +189,12 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                 // Auth store'daki profili yenile
                 await useAuthStore.getState().refreshProfile();
 
-                // Leaderboard'u yenile
+                // Leaderboard'u yenile (oda bazlı)
                 const { useLeaderboardStore } = await import('./leaderboardStore');
-                await useLeaderboardStore.getState().fetchLeaderboard();
+                const profile = useAuthStore.getState().profile;
+                if (profile?.current_room_id) {
+                    await useLeaderboardStore.getState().fetchLeaderboard(profile.current_room_id);
+                }
             } catch (err) {
                 // Offline - sessiz
             }
@@ -195,7 +206,9 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
             accumulatedMs: 0,
             status: 'idle',
             sessionStartTime: null,
-        });
+            _sessionWeekStart: null,
+            _postResetAccumulatedMs: 0,
+        } as any);
 
         get().computeStudyStats();
         get()._stopPeriodicSync();
@@ -249,7 +262,9 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
             accumulatedMs: 0,
             status: 'idle',
             sessionStartTime: null,
-        });
+            _sessionWeekStart: null,
+            _postResetAccumulatedMs: 0,
+        } as any);
 
         get().computeStudyStats();
         get()._stopPeriodicSync();
@@ -268,28 +283,34 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         try {
             const stored = await AsyncStorage.getItem(TIMER_STATE_KEY);
             if (stored) {
-                const state: TimerState = JSON.parse(stored);
+                const parsed = JSON.parse(stored);
+                const state: TimerState & { _sessionWeekStart?: string | null; _postResetAccumulatedMs?: number } = parsed;
 
                 if (state.status === 'running' && state.startTime) {
                     set({
                         ...state,
                         status: 'running',
-                    });
-                    // Timer running ise sync'i yeniden başlat
+                        _sessionWeekStart: state._sessionWeekStart ?? getCurrentWeekStart(),
+                        _postResetAccumulatedMs: state._postResetAccumulatedMs ?? 0,
+                    } as any);
                     get()._startPeriodicSync();
                     get()._setupAppStateHandler();
                 } else if (state.status === 'paused') {
                     set({
                         ...state,
                         status: 'paused',
-                    });
+                        _sessionWeekStart: state._sessionWeekStart ?? getCurrentWeekStart(),
+                        _postResetAccumulatedMs: state._postResetAccumulatedMs ?? 0,
+                    } as any);
                 } else {
                     set({
                         startTime: null,
                         accumulatedMs: 0,
                         status: 'idle',
                         sessionStartTime: null,
-                    });
+                        _sessionWeekStart: null,
+                        _postResetAccumulatedMs: 0,
+                    } as any);
                 }
             }
 
@@ -305,8 +326,8 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     },
 
     saveTimerState: async () => {
-        const { startTime, accumulatedMs, status, sessionStartTime } = get();
-        const state: TimerState = { startTime, accumulatedMs, status, sessionStartTime };
+        const { startTime, accumulatedMs, status, sessionStartTime, _sessionWeekStart, _postResetAccumulatedMs } = get();
+        const state = { startTime, accumulatedMs, status, sessionStartTime, _sessionWeekStart, _postResetAccumulatedMs };
         await AsyncStorage.setItem(TIMER_STATE_KEY, JSON.stringify(state));
 
         const { milestonesEarnedThisWeek } = get();
@@ -347,6 +368,16 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         const user = useAuthStore.getState().user;
         if (!user) return;
 
+        // Hafta sınırı kontrolü
+        const currentWeekStart = getCurrentWeekStart();
+        const sessionWeekStart = get()._sessionWeekStart;
+
+        if (sessionWeekStart && currentWeekStart !== sessionWeekStart) {
+            // Hafta değişti! Oturumu böl
+            await get()._handleWeekBoundary();
+            return; // Bu sync'te gerisini yapma
+        }
+
         const elapsedMs = get().getElapsedMs();
         const elapsedSeconds = Math.floor(elapsedMs / 1000);
 
@@ -386,24 +417,74 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         }
     },
 
+    _handleWeekBoundary: async () => {
+        const currentWeekStart = getCurrentWeekStart();
+        const elapsedMs = get().getElapsedMs();
+
+        // Sunucu zaten eski oturumu kapatmıştır (v4 migration)
+        // Reset anına kadar olan toplam süreyi kaydet
+        const preResetMs = elapsedMs;
+
+        // Yeni study_sessions kaydı (yeni hafta)
+        const { useAuthStore } = await import('./authStore');
+        const user = useAuthStore.getState().user;
+        if (user) {
+            try {
+                await supabase.from('study_sessions').insert({
+                    user_id: user.id,
+                    start_time: new Date().toISOString(),
+                    duration_seconds: 0,
+                    date: getTodayDate(),
+                    week_start: currentWeekStart,
+                    status: 'active',
+                } as any);
+            } catch (err) {
+                // Offline devam
+            }
+        }
+
+        set({
+            _sessionWeekStart: currentWeekStart,
+            _postResetAccumulatedMs: preResetMs,
+            accumulatedMs: elapsedMs, // Görsel kronometre değişmez!
+            startTime: null,
+        } as any);
+
+        // Running durumundaysa startTime'ı yeniden başlat
+        if (get().status === 'running') {
+            set({ startTime: getNow() } as any);
+        }
+
+        get().computeStudyStats();
+        await get().saveTimerState();
+    },
+
     computeStudyStats: async () => {
         const { useAuthStore } = await import('./authStore');
         const profile = useAuthStore.getState().profile;
 
-        const elapsedSeconds = Math.floor(get().getElapsedMs() / 1000);
+        const elapsedMs = get().getElapsedMs();
+        const postResetMs = get()._postResetAccumulatedMs ?? 0;
+
+        // Post-reset süre (haftalık için sadece son resetten sonrası)
+        let postResetSeconds = Math.floor((elapsedMs - postResetMs) / 1000);
+        if (postResetSeconds < 0) postResetSeconds = 0;
+
+        const elapsedSeconds = Math.floor(elapsedMs / 1000);
 
         if (profile) {
-            const weekly = profile.weekly_study_seconds + elapsedSeconds;
-            const total = profile.total_study_seconds + elapsedSeconds;
+            // Haftalık = profile zaten sıfırlanmış + sadece post-reset süre
+            const weekly = (profile.weekly_study_seconds || 0) + postResetSeconds;
+            const total = (profile.total_study_seconds || 0) + elapsedSeconds;
 
             set({
-                dailyStudySeconds: profile.weekly_study_seconds + elapsedSeconds,
+                dailyStudySeconds: weekly,
                 weeklyStudySeconds: weekly,
                 totalStudySeconds: total,
             });
         } else {
             set({
-                weeklyStudySeconds: elapsedSeconds,
+                weeklyStudySeconds: postResetSeconds,
                 totalStudySeconds: elapsedSeconds,
             });
         }
@@ -419,7 +500,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                 get().computeStudyStats();
                 await get().syncWithSupabase();
             }
-        }, 3000); // 3 saniye - anlık güncelleme
+        }, 3000);
 
         set({ _syncInterval: interval } as any);
     },
@@ -433,7 +514,6 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     },
 
     _setupAppStateHandler: () => {
-        // Mevcut subscription'ı temizle
         const existing = get()._appStateSubscription;
         if (existing && existing.remove) {
             existing.remove();

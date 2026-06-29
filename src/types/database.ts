@@ -16,6 +16,7 @@ export interface Database {
                     previous_weekly_study_seconds: number;
                     is_active: boolean;
                     last_active_at: string | null;
+                    current_room_id: string | null;
                     created_at: string;
                     updated_at: string;
                 };
@@ -29,6 +30,7 @@ export interface Database {
                     previous_weekly_study_seconds?: number;
                     is_active?: boolean;
                     last_active_at?: string | null;
+                    current_room_id?: string | null;
                     created_at?: string;
                     updated_at?: string;
                 };
@@ -42,6 +44,7 @@ export interface Database {
                     previous_weekly_study_seconds?: number;
                     is_active?: boolean;
                     last_active_at?: string | null;
+                    current_room_id?: string | null;
                     created_at?: string;
                     updated_at?: string;
                 };
@@ -82,6 +85,44 @@ export interface Database {
                     status?: 'active' | 'paused' | 'completed';
                     submitted_at?: string | null;
                     created_at?: string;
+                };
+            };
+            rooms: {
+                Row: {
+                    id: string;
+                    name: string;
+                    slug: string;
+                    description: string | null;
+                    created_by: string | null;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    name: string;
+                    slug: string;
+                    description?: string | null;
+                    created_by?: string | null;
+                    created_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    name?: string;
+                    slug?: string;
+                    description?: string | null;
+                    created_by?: string | null;
+                    created_at?: string;
+                };
+            };
+            room_members: {
+                Row: {
+                    user_id: string;
+                    room_id: string;
+                    joined_at: string;
+                };
+                Insert: {
+                    user_id: string;
+                    room_id: string;
+                    joined_at?: string;
                 };
             };
             achievements: {

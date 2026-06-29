@@ -1,11 +1,11 @@
 /**
  * KPSS Aşkı - Leaderboard Store'u
  * Gerçek zamanlı Supabase subscription ile anlık sıralama
- * v2: Aktif kullanıcı takibi eklendi
+ * v3: Oda bazlı leaderboard - her oda kendi sıralamasına sahip
  */
 
 import { create } from 'zustand';
-import { supabase, getCurrentWeekStart } from '../services/supabase';
+import { supabase, getCurrentWeekStart, fetchRoomLeaderboard, fetchRoomActiveUsers } from '../services/supabase';
 import { LeaderboardEntry, LeaderboardMode } from '../types';
 
 interface LeaderboardState {
@@ -19,10 +19,10 @@ interface LeaderboardState {
     error: string | null;
 
     setMode: (mode: LeaderboardMode) => void;
-    fetchLeaderboard: () => Promise<void>;
-    subscribeToLeaderboard: () => () => void;
-    fetchActiveUsers: () => Promise<void>;
-    subscribeToActiveUsers: () => () => void;
+    fetchLeaderboard: (roomId: string) => Promise<void>;
+    subscribeToLeaderboard: (roomId: string) => () => void;
+    fetchActiveUsers: (roomId: string) => Promise<void>;
+    subscribeToActiveUsers: (roomId: string) => () => void;
 }
 
 export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
@@ -37,55 +37,15 @@ export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
 
     setMode: (mode) => set({ mode }),
 
-    fetchLeaderboard: async () => {
+    fetchLeaderboard: async (roomId: string) => {
         set({ isLoading: true, error: null });
 
         try {
-            const weekStart = getCurrentWeekStart();
+            // Haftalık leaderboard (oda bazlı)
+            const weeklyEntries = await fetchRoomLeaderboard(roomId, 'weekly');
 
-            // Haftalık leaderboard (is_active ve last_active_at dahil)
-            const { data: weeklyData, error: weeklyError } = await supabase
-                .from('profiles')
-                .select('id, username, avatar_url, weekly_study_seconds, is_active, last_active_at')
-                .gt('weekly_study_seconds', 0)
-                .order('weekly_study_seconds', { ascending: false })
-                .limit(50);
-
-            if (weeklyError) throw weeklyError;
-
-            const weeklyEntries: LeaderboardEntry[] = (weeklyData || []).map(
-                (entry: any, index: number) => ({
-                    user_id: entry.id,
-                    username: entry.username,
-                    avatar_url: entry.avatar_url,
-                    study_seconds: entry.weekly_study_seconds,
-                    rank: index + 1,
-                    is_active: entry.is_active ?? false,
-                    last_active_at: entry.last_active_at ?? null,
-                })
-            );
-
-            // Toplam leaderboard (is_active ve last_active_at dahil)
-            const { data: totalData, error: totalError } = await supabase
-                .from('profiles')
-                .select('id, username, avatar_url, total_study_seconds, is_active, last_active_at')
-                .gt('total_study_seconds', 0)
-                .order('total_study_seconds', { ascending: false })
-                .limit(50);
-
-            if (totalError) throw totalError;
-
-            const totalEntries: LeaderboardEntry[] = (totalData || []).map(
-                (entry: any, index: number) => ({
-                    user_id: entry.id,
-                    username: entry.username,
-                    avatar_url: entry.avatar_url,
-                    study_seconds: entry.total_study_seconds,
-                    rank: index + 1,
-                    is_active: entry.is_active ?? false,
-                    last_active_at: entry.last_active_at ?? null,
-                })
-            );
+            // Toplam leaderboard (oda bazlı)
+            const totalEntries = await fetchRoomLeaderboard(roomId, 'total');
 
             // Kullanıcının kendi sıralamasını bul
             const { useAuthStore } = await import('./authStore');
@@ -117,35 +77,36 @@ export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
         }
     },
 
-    subscribeToLeaderboard: () => {
+    subscribeToLeaderboard: (roomId: string) => {
+        // Oda bazlı profiles değişikliklerini dinle
         const weeklyChannel = supabase
-            .channel('weekly-leaderboard')
+            .channel(`weekly-leaderboard-room-${roomId}`)
             .on(
                 'postgres_changes',
                 {
                     event: '*',
                     schema: 'public',
                     table: 'profiles',
-                    filter: 'weekly_study_seconds=gt.0',
+                    filter: `current_room_id=eq.${roomId}`,
                 },
                 () => {
-                    get().fetchLeaderboard();
+                    get().fetchLeaderboard(roomId);
                 }
             )
             .subscribe();
 
         const totalChannel = supabase
-            .channel('total-leaderboard')
+            .channel(`total-leaderboard-room-${roomId}`)
             .on(
                 'postgres_changes',
                 {
                     event: '*',
                     schema: 'public',
                     table: 'profiles',
-                    filter: 'total_study_seconds=gt.0',
+                    filter: `current_room_id=eq.${roomId}`,
                 },
                 () => {
-                    get().fetchLeaderboard();
+                    get().fetchLeaderboard(roomId);
                 }
             )
             .subscribe();
@@ -156,46 +117,28 @@ export const useLeaderboardStore = create<LeaderboardState>((set, get) => ({
         };
     },
 
-    fetchActiveUsers: async () => {
+    fetchActiveUsers: async (roomId: string) => {
         try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('id, username, avatar_url, weekly_study_seconds, is_active, last_active_at')
-                .eq('is_active', true)
-                .order('weekly_study_seconds', { ascending: false })
-                .limit(10);
-
-            if (error) throw error;
-
-            const activeUsers: LeaderboardEntry[] = (data || []).map((entry: any) => ({
-                user_id: entry.id,
-                username: entry.username,
-                avatar_url: entry.avatar_url,
-                study_seconds: entry.weekly_study_seconds,
-                rank: 0,
-                is_active: entry.is_active ?? true,
-                last_active_at: entry.last_active_at ?? null,
-            }));
-
+            const activeUsers = await fetchRoomActiveUsers(roomId);
             set({ activeUsers });
         } catch (err) {
             // Sessiz
         }
     },
 
-    subscribeToActiveUsers: () => {
+    subscribeToActiveUsers: (roomId: string) => {
         const channel = supabase
-            .channel('active-users')
+            .channel(`active-users-room-${roomId}`)
             .on(
                 'postgres_changes',
                 {
                     event: '*',
                     schema: 'public',
                     table: 'profiles',
-                    filter: 'is_active=eq.true',
+                    filter: `current_room_id=eq.${roomId}`,
                 },
                 () => {
-                    get().fetchActiveUsers();
+                    get().fetchActiveUsers(roomId);
                 }
             )
             .subscribe();

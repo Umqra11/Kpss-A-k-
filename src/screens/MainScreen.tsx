@@ -1,5 +1,6 @@
 /**
  * KPSS Aşkı - Ana Kronometre Ekranı (Apple-minimalist)
+ * v3: Oda bazlı istatistikler ve oda adı gösterimi
  */
 
 import React, { useCallback, useEffect } from 'react';
@@ -16,6 +17,7 @@ import { Spacing } from '../theme/spacing';
 import { useTimerStore } from '../stores/timerStore';
 import { useAuthStore } from '../stores/authStore';
 import { useLeaderboardStore } from '../stores/leaderboardStore';
+import { useRoomStore } from '../stores/roomStore';
 import { TimerDisplay } from '../components/TimerDisplay';
 import { MilestonePopup } from '../components/MilestonePopup';
 import { StatTile } from '../components/StatTile';
@@ -41,13 +43,19 @@ export function MainScreen() {
 
     const profile = useAuthStore((s) => s.profile);
     const fetchLeaderboard = useLeaderboardStore((s) => s.fetchLeaderboard);
+    const rooms = useRoomStore((s) => s.rooms);
 
     const [viewMode, setViewMode] = React.useState<ViewMode>('weekly');
 
+    const roomId = profile?.current_room_id;
+    const roomName = rooms.find((r) => r.id === roomId)?.name || '';
+
     useEffect(() => {
         loadTimerState();
-        fetchLeaderboard();
-    }, []);
+        if (roomId) {
+            fetchLeaderboard(roomId);
+        }
+    }, [roomId]);
 
     const handleMainButton = useCallback(async () => {
         if (status === 'idle') {
@@ -76,7 +84,12 @@ export function MainScreen() {
             <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <Text style={styles.username}>@{profile?.username || '...'}</Text>
+                    <View style={styles.headerLeft}>
+                        <Text style={styles.username}>@{profile?.username || '...'}</Text>
+                        {roomName ? (
+                            <Text style={styles.roomName}>🏠 {roomName}</Text>
+                        ) : null}
+                    </View>
                     <View style={styles.segmentWrapper}>
                         <SegmentedControl
                             segments={segments}
@@ -180,14 +193,24 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         width: '100%',
         marginBottom: Spacing.xxl,
+    },
+    headerLeft: {
+        flex: 1,
+        marginRight: Spacing.sm,
     },
     username: {
         fontFamily: Fonts.display.bold,
         fontSize: FontSize.title3,
         color: Colors.label,
+    },
+    roomName: {
+        fontFamily: Fonts.body.semibold,
+        fontSize: FontSize.caption1,
+        color: Colors.secondaryLabel,
+        marginTop: 2,
     },
     segmentWrapper: {
         maxWidth: 200,

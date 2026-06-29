@@ -124,10 +124,16 @@ export function TestPanel() {
                 {/* Leaderboard Section */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>🏆 Leaderboard</Text>
-                    <TouchableOpacity style={styles.button} onPress={() => leaderboardStore.fetchLeaderboard()}>
+                    <TouchableOpacity style={styles.button} onPress={() => {
+                        const roomId = authStore.profile?.current_room_id;
+                        if (roomId) leaderboardStore.fetchLeaderboard(roomId);
+                    }}>
                         <Text style={styles.buttonText}>Leaderboard'u Getir</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.button} onPress={() => leaderboardStore.fetchActiveUsers()}>
+                    <TouchableOpacity style={styles.button} onPress={() => {
+                        const roomId = authStore.profile?.current_room_id;
+                        if (roomId) leaderboardStore.fetchActiveUsers(roomId);
+                    }}>
                         <Text style={styles.buttonText}>Aktif Kullanıcıları Getir</Text>
                     </TouchableOpacity>
                     <Text style={styles.infoText}>
