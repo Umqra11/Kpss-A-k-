@@ -530,7 +530,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         await get().saveTimerState();
     },
 
-    computeStudyStats: async () => {
+    computeStudyStats: () => {
         const elapsedMs = get().getElapsedMs();
         const roomBaseWeekly = get()._roomBaseWeeklySeconds ?? 0;
         const roomBaseTotal = get()._roomBaseTotalSeconds ?? 0;
