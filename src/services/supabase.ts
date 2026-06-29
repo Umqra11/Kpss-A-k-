@@ -29,22 +29,64 @@ export const supabase: any = createClient(supabaseUrl, supabaseAnonKey, {
 
 // Kullanıcı adı ile kayıt (anon auth)
 export async function signUpWithUsername(username: string) {
+    // Mevcut profili kontrol et (aktif/pasif fark etmez)
     const { data: existingProfile } = await supabase
         .from('profiles')
-        .select('id')
+        .select('*')
         .eq('username', username)
         .single();
-
-    if (existingProfile) {
-        throw new Error('Bu kullanıcı adı zaten alınmış!');
-    }
 
     // Anonim oturum oluştur
     const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
 
     if (authError) throw authError;
+    if (!authData.user) throw new Error('Oturum oluşturulamadı');
 
-    // Profil oluştur
+    if (existingProfile) {
+        // Eğer profil aktifse (başkası kullanıyorsa) hata ver
+        if (existingProfile.is_active) {
+            await supabase.auth.signOut();
+            throw new Error('Bu kullanıcı adı zaten alınmış!');
+        }
+
+        // Pasif profili reaktive et: eski id'yi yeni auth id ile güncelle
+        // NOT: Supabase anon auth'ta PK değişemez, o yüzden eski kaydı silip yeni kayıt oluşturacağız
+        const oldProfile = existingProfile;
+
+        // Eski profili sil (yeni auth id'si ile yeniden oluşturacağız)
+        await supabase.from('profiles').delete().eq('id', oldProfile.id);
+
+        // Yeni auth id'si ile profili oluştur, eski verileri koru
+        const { error: insertError } = await supabase.from('profiles').insert({
+            id: authData.user.id,
+            username,
+            total_study_seconds: oldProfile.total_study_seconds || 0,
+            weekly_study_seconds: oldProfile.weekly_study_seconds || 0,
+            previous_weekly_study_seconds: oldProfile.previous_weekly_study_seconds || 0,
+            is_active: true,
+            last_active_at: new Date().toISOString(),
+            current_room_id: oldProfile.current_room_id,
+            created_at: oldProfile.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        } as any);
+
+        if (insertError) {
+            await supabase.auth.signOut();
+            throw insertError;
+        }
+
+        return {
+            user: authData.user,
+            session: authData.session,
+            reactivated: true,
+            previousStats: {
+                total_study_seconds: oldProfile.total_study_seconds || 0,
+                weekly_study_seconds: oldProfile.weekly_study_seconds || 0,
+            },
+        };
+    }
+
+    // Yeni profil oluştur
     const { error: profileError } = await supabase.from('profiles').insert({
         id: authData.user?.id,
         username,
@@ -58,6 +100,7 @@ export async function signUpWithUsername(username: string) {
     return {
         user: authData.user,
         session: authData.session,
+        reactivated: false,
     };
 }
 

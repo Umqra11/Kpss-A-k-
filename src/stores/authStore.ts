@@ -3,6 +3,7 @@
  */
 
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Profile } from '../types';
 import { signUpWithUsername, autoLogin, signOut, supabase } from '../services/supabase';
 
@@ -76,11 +77,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                         username: trimmed,
                         display_name: null,
                         avatar_url: null,
-                        total_study_seconds: 0,
-                        weekly_study_seconds: 0,
+                        total_study_seconds: result.reactivated ? (result.previousStats?.total_study_seconds ?? 0) : 0,
+                        weekly_study_seconds: result.reactivated ? (result.previousStats?.weekly_study_seconds ?? 0) : 0,
                         previous_weekly_study_seconds: 0,
-                        is_active: false,
-                        last_active_at: null,
+                        is_active: true,
+                        last_active_at: new Date().toISOString(),
                         current_room_id: null,
                         created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString(),
@@ -98,6 +99,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     },
 
     logout: async () => {
+        const { profile } = get();
+
+        // Önceki kullanıcı adını AsyncStorage'a kaydet (tekrar girişte önermek için)
+        if (profile?.username) {
+            try {
+                await AsyncStorage.setItem('@kpss_aski_previous_username', profile.username);
+            } catch (e) {
+                // sessizce başarısız
+            }
+        }
+
+        // Profili DB'de pasif olarak işaretle
+        if (profile?.id) {
+            try {
+                await supabase
+                    .from('profiles')
+                    .update({
+                        is_active: false,
+                        current_room_id: null,
+                        last_active_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                    } as any)
+                    .eq('id', profile.id);
+            } catch (e) {
+                // sessizce başarısız
+            }
+        }
+
         try {
             await signOut();
         } catch (err) {

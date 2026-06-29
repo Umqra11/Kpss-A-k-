@@ -1,7 +1,7 @@
 /**
  * KPSS Aşkı - Giriş Ekranı (Apple-minimalist)
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -10,7 +10,9 @@ import {
     SafeAreaView,
     KeyboardAvoidingView,
     Platform,
+    TouchableOpacity,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../theme/colors';
 import { Fonts, FontSize } from '../theme/typography';
 import { Spacing, Radius } from '../theme/spacing';
@@ -19,8 +21,8 @@ import { AppleButton } from '../components/AppleButton';
 
 export function AuthScreen() {
     const [username, setUsername] = useState('');
+    const [previousUsername, setPreviousUsername] = useState<string | null>(null);
     const register = useAuthStore((s) => s.register);
-    const login = useAuthStore((s) => s.login);
     const isLoading = useAuthStore((s) => s.isLoading);
     const error = useAuthStore((s) => s.error);
     const clearError = useAuthStore((s) => s.clearError);
@@ -31,9 +33,20 @@ export function AuthScreen() {
         }
     };
 
-    React.useEffect(() => {
-        login();
+    useEffect(() => {
+        AsyncStorage.getItem('@kpss_aski_previous_username').then((prev) => {
+            if (prev) {
+                setPreviousUsername(prev);
+                setUsername(prev);
+            }
+        }).catch(() => { });
     }, []);
+
+    const handleUsePreviousUsername = () => {
+        if (previousUsername) {
+            setUsername(previousUsername);
+        }
+    };
 
     return (
         <SafeAreaView style={styles.container}>
@@ -50,6 +63,22 @@ export function AuthScreen() {
                 </View>
 
                 <View style={styles.form}>
+                    {previousUsername && (
+                        <TouchableOpacity
+                            onPress={handleUsePreviousUsername}
+                            style={styles.previousHint}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.previousHintText}>
+                                👋 Tekrar hoş geldin!{' '}
+                                <Text style={styles.previousHintUsername}>
+                                    @{previousUsername}
+                                </Text>{' '}
+                                ile devam et
+                            </Text>
+                        </TouchableOpacity>
+                    )}
+
                     <TextInput
                         style={styles.input}
                         placeholder="Kullanıcı adı"
@@ -128,6 +157,23 @@ const styles = StyleSheet.create({
         fontSize: FontSize.footnote,
         color: Colors.systemRed,
         textAlign: 'center',
+    },
+    previousHint: {
+        backgroundColor: Colors.systemBlue + '12',
+        borderRadius: Radius.md,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.sm,
+        marginBottom: Spacing.xs,
+    },
+    previousHintText: {
+        fontFamily: Fonts.body.regular,
+        fontSize: FontSize.footnote,
+        color: Colors.secondaryLabel,
+        textAlign: 'center',
+    },
+    previousHintUsername: {
+        fontFamily: Fonts.body.bold,
+        color: Colors.systemBlue,
     },
     button: {
         marginTop: Spacing.xs,
