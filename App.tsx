@@ -30,19 +30,11 @@ export default function App() {
   const profile = useAuthStore((s) => s.profile);
   const login = useAuthStore((s) => s.login);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
-  const fontsLoaded = useFontLoader();
+  const { fontsLoaded } = useFontLoader();
 
   useEffect(() => {
     login();
   }, []);
-
-  // Profil her değiştiğinde current_room_id'yi kontrol et
-  useEffect(() => {
-    if (isAuthenticated && profile) {
-      // Profilin güncel olduğundan emin ol
-      refreshProfile();
-    }
-  }, [isAuthenticated]);
 
   if (!fontsLoaded || isLoading) {
     return (
