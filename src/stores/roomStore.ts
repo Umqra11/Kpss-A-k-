@@ -1,222 +1,184 @@
 /**
  * KPSS Aşkı - Oda Store'u
- * Odaları listeleme, odaya katılma/ayrılma, yeni oda oluşturma
- * Gerçek zamanlı Supabase subscription ile oda değişikliklerini dinleme
+ * v8: ERR-002 fix (RealtimeManager), ERR-004 fix (delete_room_cascade)
  */
 
 import { create } from 'zustand';
-import { Room } from '../types';
+import type { Room } from '../types';
 import {
-    supabase,
-    fetchRooms,
-    joinRoom,
-    leaveRoom,
-    createRoom,
-    deleteRoom,
-} from '../services/supabase';
+  fetchRooms,
+  joinRoom,
+  leaveRoom,
+  createRoom,
+  deleteRoom,
+} from '../services/roomService';
+import { realtimeManager } from '../services/RealtimeManager';
 
 interface RoomState {
-    rooms: Room[];
-    currentRoomId: string | null;
-    isLoading: boolean;
-    error: string | null;
+  rooms: Room[];
+  currentRoomId: string | null;
+  isLoading: boolean;
+  error: string | null;
 
-    loadRooms: () => Promise<void>;
-    join: (userId: string, roomId: string) => Promise<void>;
-    leave: (userId: string) => Promise<void>;
-    create: (userId: string, name: string, description?: string) => Promise<Room>;
-    delete: (userId: string, roomId: string) => Promise<void>;
-    setCurrentRoomId: (roomId: string | null) => void;
-    subscribeToRooms: () => () => void;
-    clearError: () => void;
+  loadRooms: () => Promise<void>;
+  join: (userId: string, roomId: string) => Promise<void>;
+  leave: (userId: string) => Promise<void>;
+  create: (userId: string, name: string, description?: string) => Promise<Room>;
+  delete: (userId: string, roomId: string) => Promise<void>;
+  setCurrentRoomId: (roomId: string | null) => void;
+  subscribeToRooms: () => () => void;
+  clearError: () => void;
 }
 
 export const useRoomStore = create<RoomState>((set, get) => ({
-    rooms: [],
-    currentRoomId: null,
-    isLoading: false,
-    error: null,
+  rooms: [],
+  currentRoomId: null,
+  isLoading: false,
+  error: null,
 
-    loadRooms: async () => {
-        set({ isLoading: true, error: null });
-        try {
-            const rooms = await fetchRooms();
-            set({ rooms, isLoading: false });
-        } catch (err: any) {
-            set({
-                error: err.message || 'Odalar yüklenemedi',
-                isLoading: false,
-            });
-        }
-    },
+  loadRooms: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const rooms = await fetchRooms();
+      set({ rooms, isLoading: false });
+    } catch (err: any) {
+      set({
+        error: err.message || 'Odalar yüklenemedi',
+        isLoading: false,
+      });
+    }
+  },
 
-    join: async (userId: string, roomId: string) => {
-        set({ error: null });
-        try {
-            // Eğer zaten bir odadaysak, önce o odanın sürelerini kaydedip ayrılalım
-            const { useAuthStore } = await import('./authStore');
-            const profile = useAuthStore.getState().profile;
-            if (profile?.current_room_id && profile.current_room_id !== roomId) {
-                await get().leave(userId);
-            }
+  join: async (userId: string, roomId: string) => {
+    set({ error: null });
+    try {
+      const { useAuthStore } = await import('./authStore');
+      const profile = useAuthStore.getState().profile;
+      if (profile?.current_room_id && profile.current_room_id !== roomId) {
+        await get().leave(userId);
+      }
 
-            await joinRoom(userId, roomId);
-            set({ currentRoomId: roomId });
+      await joinRoom(userId, roomId);
+      set({ currentRoomId: roomId });
 
-            // Auth store'daki profili güncelle
-            await useAuthStore.getState().refreshProfile();
+      await useAuthStore.getState().refreshProfile();
+      await get().loadRooms();
+    } catch (err: any) {
+      set({ error: err.message || 'Odaya katılınamadı' });
+      throw err;
+    }
+  },
 
-            // Odaları yeniden yükle (üye sayıları değişti)
-            await get().loadRooms();
-        } catch (err: any) {
-            set({ error: err.message || 'Odaya katılınamadı' });
-            throw err;
-        }
-    },
+  leave: async (userId: string) => {
+    set({ error: null });
+    try {
+      const { useTimerStore } = await import('./timerStore');
+      const timerState = useTimerStore.getState();
+      const weeklySeconds = timerState.weeklyStudySeconds;
+      const totalSeconds = timerState.totalStudySeconds;
 
-    leave: async (userId: string) => {
-        set({ error: null });
-        try {
-            // Timer store'dan şu anki oda bazlı süreleri al
-            const { useTimerStore } = await import('./timerStore');
-            const timerState = useTimerStore.getState();
-            const weeklySeconds = timerState.weeklyStudySeconds;
-            const totalSeconds = timerState.totalStudySeconds;
+      await leaveRoom(userId, weeklySeconds, totalSeconds);
+      set({ currentRoomId: null });
 
-            await leaveRoom(userId, weeklySeconds, totalSeconds);
-            set({ currentRoomId: null });
+      const { useAuthStore } = await import('./authStore');
+      await useAuthStore.getState().refreshProfile();
 
-            // Auth store'daki profili güncelle
-            const { useAuthStore } = await import('./authStore');
-            await useAuthStore.getState().refreshProfile();
+      // Timer state'ini sıfırla
+      useTimerStore.setState({
+        dailyStudySeconds: 0,
+        weeklyStudySeconds: 0,
+        totalStudySeconds: 0,
+        _lastSyncedElapsedMs: 0,
+      });
 
-            // Timer state'ini sıfırla (oda bazlı süreler)
-            useTimerStore.setState({
-                dailyStudySeconds: 0,
-                weeklyStudySeconds: 0,
-                totalStudySeconds: 0,
-                _lastSyncedElapsedMs: 0,
-            });
+      await get().loadRooms();
+    } catch (err: any) {
+      set({ error: err.message || 'Odadan ayrılınamadı' });
+      throw err;
+    }
+  },
 
-            // Odaları yeniden yükle
-            await get().loadRooms();
-        } catch (err: any) {
-            set({ error: err.message || 'Odadan ayrılınamadı' });
-            throw err;
-        }
-    },
+  create: async (userId: string, name: string, description?: string) => {
+    set({ error: null });
+    try {
+      const { useAuthStore } = await import('./authStore');
+      const profile = useAuthStore.getState().profile;
+      if (profile?.current_room_id) {
+        await get().leave(userId);
+      }
 
-    create: async (userId: string, name: string, description?: string) => {
-        set({ error: null });
-        try {
-            // Eğer zaten bir odadaysak, önce o odanın sürelerini kaydedip ayrılalım
-            const { useAuthStore } = await import('./authStore');
-            const profile = useAuthStore.getState().profile;
-            if (profile?.current_room_id) {
-                await get().leave(userId);
-            }
+      const newRoom = await createRoom(userId, name, description);
+      await get().loadRooms();
+      set({ currentRoomId: newRoom.id });
 
-            const newRoom = await createRoom(userId, name, description);
+      await useAuthStore.getState().refreshProfile();
 
-            // Odaları yeniden yükle
-            await get().loadRooms();
+      const room: Room = {
+        id: newRoom.id,
+        name: newRoom.name,
+        slug: newRoom.slug,
+        description: description || '',
+        created_by: userId,
+        created_at: new Date().toISOString(),
+        member_count: 1,
+        active_member_count: 1,
+      };
 
-            // Oluşturan kişi otomatik katılmış olur
-            set({ currentRoomId: newRoom.id });
+      return room;
+    } catch (err: any) {
+      set({ error: err.message || 'Oda oluşturulamadı' });
+      throw err;
+    }
+  },
 
-            // Auth store'daki profili güncelle
-            await useAuthStore.getState().refreshProfile();
+  delete: async (userId: string, roomId: string) => {
+    set({ error: null });
+    try {
+      await deleteRoom(roomId);
+      // ERR-004 fix: Eğer silinen odadaysak, state'i temizle
+      const { currentRoomId } = get();
+      if (currentRoomId === roomId) {
+        set({ currentRoomId: null });
+        const { useAuthStore } = await import('./authStore');
+        await useAuthStore.getState().refreshProfile();
+      }
+      await get().loadRooms();
+    } catch (err: any) {
+      set({ error: err.message || 'Oda silinemedi' });
+      throw err;
+    }
+  },
 
-            // Odayı Room tipinde döndür (tam olarak)
-            const room: Room = {
-                id: newRoom.id,
-                name: newRoom.name,
-                slug: newRoom.slug,
-                description: description || '',
-                created_by: userId,
-                created_at: new Date().toISOString(),
-                member_count: 1,
-                active_member_count: 1,
-            };
+  setCurrentRoomId: (roomId: string | null) => {
+    set({ currentRoomId: roomId });
+  },
 
-            return room;
-        } catch (err: any) {
-            set({ error: err.message || 'Oda oluşturulamadı' });
-            throw err;
-        }
-    },
+  subscribeToRooms: () => {
+    // ERR-002 fix: RealtimeManager ile memory-leak'siz subscription
+    const unsub1 = realtimeManager.subscribe(
+      'rooms-changes',
+      { table: 'rooms', event: '*' },
+      () => get().loadRooms()
+    );
 
-    delete: async (userId: string, roomId: string) => {
-        set({ error: null });
-        try {
-            await deleteRoom(roomId);
-            // Odaları yeniden yükle
-            await get().loadRooms();
-        } catch (err: any) {
-            set({ error: err.message || 'Oda silinemedi' });
-            throw err;
-        }
-    },
+    const unsub2 = realtimeManager.subscribe(
+      'room-members-changes',
+      { table: 'room_members', event: '*' },
+      () => get().loadRooms()
+    );
 
-    setCurrentRoomId: (roomId: string | null) => {
-        set({ currentRoomId: roomId });
-    },
+    const unsub3 = realtimeManager.subscribe(
+      'profiles-room-changes',
+      { table: 'profiles', event: 'UPDATE' },
+      () => get().loadRooms()
+    );
 
-    subscribeToRooms: () => {
-        // Rooms tablosundaki değişiklikleri dinle
-        const roomsChannel = supabase
-            .channel('rooms-changes')
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'rooms',
-                },
-                () => {
-                    get().loadRooms();
-                }
-            )
-            .subscribe();
+    return () => {
+      unsub1();
+      unsub2();
+      unsub3();
+    };
+  },
 
-        // Room members değişikliklerini dinle (üye sayıları için)
-        const membersChannel = supabase
-            .channel('room-members-changes')
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'room_members',
-                },
-                () => {
-                    get().loadRooms();
-                }
-            )
-            .subscribe();
-
-        // Profiles current_room_id değişiklikleri (aktif sayıları için)
-        const profilesChannel = supabase
-            .channel('profiles-room-changes')
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'profiles',
-                },
-                () => {
-                    get().loadRooms();
-                }
-            )
-            .subscribe();
-
-        return () => {
-            roomsChannel.unsubscribe();
-            membersChannel.unsubscribe();
-            profilesChannel.unsubscribe();
-        };
-    },
-
-    clearError: () => set({ error: null }),
+  clearError: () => set({ error: null }),
 }));

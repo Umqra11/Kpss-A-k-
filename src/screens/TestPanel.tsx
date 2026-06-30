@@ -19,7 +19,8 @@ import { Fonts, FontSize } from '../theme/typography';
 import { useTimerStore } from '../stores/timerStore';
 import { useAuthStore } from '../stores/authStore';
 import { useLeaderboardStore } from '../stores/leaderboardStore';
-import { supabase, getCurrentWeekStart } from '../services/supabase';
+import { supabase } from '../services/supabaseClient';
+import { getCurrentWeekStart } from '../utils/date';
 import { formatDurationCompact, formatWithDays, MILESTONES } from '../theme/milestones';
 
 export function TestPanel() {

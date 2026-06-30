@@ -1,7 +1,25 @@
 /**
  * KPSS Aşkı - Apple Minimalist Tipografi
  * iOS Dynamic Type Scale
+ *
+ * Font ailesi: ClashDisplay (başlıklar) + Satoshi (gövde metni)
+ * Font dosyaları assets/fonts/ altında mevcut değilse sistem fontu kullanılır.
  */
+
+import { Platform } from 'react-native';
+
+// Sistem font fallback'leri
+const systemFont = Platform.select({
+  ios: 'SF Pro Display',
+  android: 'Roboto',
+  default: 'system-ui',
+});
+
+const systemBodyFont = Platform.select({
+  ios: 'SF Pro Text',
+  android: 'Roboto',
+  default: 'system-ui',
+});
 
 export const Fonts = {
     display: {
@@ -9,12 +27,16 @@ export const Fonts = {
         semibold: 'ClashDisplay-Semibold',
         medium: 'ClashDisplay-Medium',
         regular: 'ClashDisplay-Regular',
+        // Sistem font fallback (font yüklenemezse)
+        fallback: systemFont,
     },
     body: {
         bold: 'Satoshi-Bold',
         semibold: 'Satoshi-Medium',
         regular: 'Satoshi-Regular',
         light: 'Satoshi-Light',
+        // Sistem font fallback
+        fallback: systemBodyFont,
     },
 } as const;
 

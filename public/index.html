@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KPSS Aşkı — Çalışma Arkadaşlarınla Motive Ol</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://sv g.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⏱️</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* ===== Tokens ===== */
+    :root {
+      --color-bg: #FFFFFF;
+      --color-surface: #F2F2F7;
+      --color-surface-hover: #E5E5EA;
+      --color-accent: #007AFF;
+      --color-accent-hover: #0066D6;
+      --color-accent-light: #E8F0FE;
+      --color-text: #000000;
+      --color-text-secondary: #3C3C4399;
+      --color-text-tertiary: #3C3C434D;
+      --color-success: #34C759;
+      --color-border: #E5E5EA;
+      --color-overlay: rgba(0, 0, 0, 0.04);
+
+      --text-hero: clamp(2.5rem, 1.5rem + 5vw, 4.5rem);
+      --text-heading: clamp(1.5rem, 1rem + 2.5vw, 2.5rem);
+      --text-body: clamp(0.9375rem, 0.875rem + 0.3vw, 1.0625rem);
+      --text-small: clamp(0.8125rem, 0.75rem + 0.3vw, 0.875rem);
+
+      --space-xs: 8px;
+      --space-sm: 12px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 32px;
+      --space-2xl: 48px;
+      --space-3xl: 64px;
+      --space-4xl: 96px;
+
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-full: 9999px;
+
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --duration-fast: 150ms;
+      --duration-normal: 300ms;
+
+      --max-width: 1200px;
+      --header-height: 60px;
+    }
+
+    /* ===== Reset ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      font-size: var(--text-body);
+      color: var(--color-text);
+      background: var(--color-bg);
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+    button { font: inherit; cursor: pointer; border: none; background: none; }
+    ul, ol { list-style: none; }
+
+    /* ===== Container ===== */
+    .container {
+      width: 100%;
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 var(--space-lg);
+    }
+
+    /* ===== Header ===== */
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      border-bottom: 1px solid var(--color-border);
+      height: var(--header-height);
+    }
+    .header .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 100%;
+    }
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      font-size: 1.125rem;
+      font-weight: 700;
+    }
+    .header-brand-emoji { font-size: 1.5rem; }
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: var(--space-lg);
+    }
+    .header-nav a {
+      font-size: var(--text-small);
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      transition: color var(--duration-fast) var(--ease-out);
+    }
+    .header-nav a:hover { color: var(--color-text); }
+
+    /* ===== Buttons ===== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-xs);
+      font-weight: 600;
+      border-radius: var(--radius-md);
+      transition: all var(--duration-fast) var(--ease-out);
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .btn:active { transform: scale(0.97); }
+
+    .btn-primary {
+      background: var(--color-accent);
+      color: #fff;
+      padding: 10px 20px;
+      font-size: var(--text-small);
+    }
+    .btn-primary:hover { background: var(--color-accent-hover); }
+
+    .btn-primary-large {
+      background: var(--color-accent);
+      color: #fff;
+      padding: 16px 32px;
+      font-size: 1.0625rem;
+      border-radius: var(--radius-lg);
+    }
+    .btn-primary-large:hover { background: var(--color-accent-hover); }
+
+    .btn-ghost {
+      color: var(--color-accent);
+      font-size: var(--text-small);
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+    }
+    .btn-ghost:hover { background: var(--color-accent-light); }
+
+    /* ===== Hero ===== */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding-top: var(--header-height);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -30%;
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, rgba(0,122,255,0.06) 0%, transparent 70%);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .hero .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4xl);
+      align-items: center;
+      padding-top: var(--space-3xl);
+      padding-bottom: var(--space-3xl);
+      position: relative;
+    }
+    .hero-content { max-width: 560px; }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      background: var(--color-accent-light);
+      color: var(--color-accent);
+      font-size: var(--text-small);
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      margin-bottom: var(--space-lg);
+    }
+    .hero-title {
+      font-size: var(--text-hero);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin-bottom: var(--space-lg);
+    }
+    .hero-title span {
+      background: linear-gradient(135deg, var(--color-accent), #5856D6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-description {
+      font-size: var(--text-body);
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+      margin-bottom: var(--space-xl);
+      max-width: 480px;
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      align-items: center;
+    }
+    .hero-stats {
+      display: flex;
+      gap: var(--space-xl);
+      margin-top: var(--space-2xl);
+      padding-top: var(--space-xl);
+      border-top: 1px solid var(--color-border);
+    }
+    .hero-stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .hero-stat-label {
+      font-size: var(--text-small);
+      color: var(--color-text-secondary);
+      margin-top: 2px;
+    }
+
+    /* Hero Visual */
+    .hero-visual {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+    .hero-mockup {
+      width: 100%;
+      max-width: 400px;
+      aspect-ratio: 280 / 580;
+      background: #000;
+      border-radius: 36px;
+      padding: 12px;
+      box-shadow:
+        0 20px 60px rgba(0,0,0,0.12),
+        0 8px 24px rgba(0,0,0,0.06);
+      position: relative;
+    }
+    .hero-mockup-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 28px;
+      background: var(--color-bg);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 20px;
+    }
+    .mockup-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .mockup-header-emoji { font-size: 36px; margin-bottom: 4px; }
+    .mockup-header-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .mockup-header-subtitle {
+      font-size: 11px;
+      color: var(--color-text-secondary);
+      margin-top: 2px;
+    }
+    .mockup-input {
+      background: var(--color-surface);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      font-size: 14px;
+      color: var(--color-text);
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .mockup-input::placeholder { color: var(--color-text-tertiary); }
+    .mockup-btn {
+      background: var(--color-accent);
+      color: #fff;
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .mockup-leaderboard {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mockup-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: var(--color-surface);
+      border-radius: var(--radius-sm);
+    }
+    .mockup-row-rank {
+      width: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .mockup-row-name { flex: 1; font-size: 12px; font-weight: 600; }
+    .mockup-row-time { font-size: 11px; color: var(--color-text-secondary); }
+    .mockup-row-bar {
+      width: 40px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--color-surface-hover);
+      overflow: hidden;
+    }
+    .mockup-row-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: var(--color-accent);
+    }
+
+    /* ===== Features ===== */
+    .features {
+      padding: var(--space-4xl) 0;
+      background: var(--color-surface);
+    }
+    .features-header {
+      text-align: center;
+      margin-bottom: var(--space-3xl);
+    }
+    .features-header h2 {
+      font-size: var(--text-heading);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-sm);
+    }
+    .features-header p {
+      color: var(--color-text-secondary);
+      max-width: 520px;
+      margin: 0 auto;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-lg);
+    }
+    .feature-card {
+      background: var(--color-bg);
+      border-radius: var(--radius-lg);
+      padding: var(--space-xl);
+      border: 1px solid var(--color-border);
+      transition: transform var(--duration-normal) var(--ease-out),
+                  box-shadow var(--duration-normal) var(--ease-out);
+    }
+    .feature-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 32px var(--color-overlay);
+    }
+    .feature-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-md);
+      background: var(--color-accent-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      margin-bottom: var(--space-md);
+    }
+    .feature-card h3 {
+      font-size: 1.0625rem;
+      font-weight: 700;
+      margin-bottom: var(--space-xs);
+    }
+    .feature-card p {
+      font-size: var(--text-small);
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+    }
+
+    /* ===== How It Works ===== */
+    .how-it-works {
+      padding: var(--space-4xl) 0;
+    }
+    .how-it-works h2 {
+      text-align: center;
+      font-size: var(--text-heading);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-3xl);
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-xl);
+      counter-reset: step;
+    }
+    .step {
+      text-align: center;
+      position: relative;
+      padding: var(--space-xl) var(--space-lg);
+    }
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      margin: 0 auto var(--space-md);
+    }
+    .step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 20px;
+      right: -10px;
+      width: 20px;
+      height: 2px;
+      background: var(--color-border);
+    }
+    .step h3 {
+      font-size: 1.0625rem;
+      font-weight: 700;
+      margin-bottom: var(--space-xs);
+    }
+    .step p {
+      font-size: var(--text-small);
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+    }
+
+    /* ===== Testimonial ===== */
+    .testimonial {
+      padding: var(--space-4xl) 0;
+      background: var(--color-surface);
+    }
+    .testimonial-card {
+      max-width: 680px;
+      margin: 0 auto;
+      text-align: center;
+      padding: var(--space-2xl);
+    }
+    .testimonial-quote {
+      font-size: clamp(1.125rem, 1rem + 0.5vw, 1.375rem);
+      font-weight: 500;
+      line-height: 1.6;
+      letter-spacing: -0.01em;
+      margin-bottom: var(--space-lg);
+      color: var(--color-text-secondary);
+    }
+    .testimonial-quote::before { content: '\201C'; }
+    .testimonial-quote::after { content: '\201D'; }
+    .testimonial-author {
+      font-weight: 600;
+      font-size: var(--text-small);
+    }
+    .testimonial-role {
+      font-size: var(--text-small);
+      color: var(--color-text-secondary);
+    }
+
+    /* ===== CTA ===== */
+    .cta {
+      padding: var(--space-4xl) 0;
+      text-align: center;
+    }
+    .cta h2 {
+      font-size: var(--text-heading);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-sm);
+    }
+    .cta p {
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-xl);
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .cta-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      justify-content: center;
+    }
+    .btn-outline {
+      background: transparent;
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+      padding: 16px 32px;
+      font-size: 1.0625rem;
+      font-weight: 600;
+      border-radius: var(--radius-lg);
+    }
+    .btn-outline:hover {
+      background: var(--color-surface);
+      border-color: var(--color-text-tertiary);
+    }
+
+    /* ===== Footer ===== */
+    .footer {
+      padding: var(--space-xl) 0;
+      border-top: 1px solid var(--color-border);
+    }
+    .footer .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      font-size: var(--text-small);
+      font-weight: 600;
+    }
+    .footer-links {
+      display: flex;
+      gap: var(--space-lg);
+    }
+    .footer-links a {
+      font-size: var(--text-small);
+      color: var(--color-text-secondary);
+      transition: color var(--duration-fast) var(--ease-out);
+    }
+    .footer-links a:hover { color: var(--color-text); }
+
+    /* ===== Mobile Nav ===== */
+    .mobile-nav-toggle {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      padding: 4px;
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+    .mobile-nav-toggle span {
+      display: block;
+      width: 24px;
+      height: 2px;
+      background: var(--color-text);
+      border-radius: 1px;
+      transition: all var(--duration-fast) var(--ease-out);
+    }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 1024px) {
+      .hero .container {
+        grid-template-columns: 1fr;
+        text-align: center;
+        gap: var(--space-2xl);
+      }
+      .hero-content { max-width: 100%; }
+      .hero-description { margin-left: auto; margin-right: auto; }
+      .hero-actions { justify-content: center; }
+      .hero-stats { justify-content: center; }
+      .hero-mockup { max-width: 320px; margin: 0 auto; }
+      .hero::before { top: -20%; right: -50%; width: 500px; height: 500px; }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 768px) {
+      :root {
+        --space-4xl: 64px;
+        --space-3xl: 48px;
+      }
+      .header-nav a:not(.btn) { display: none; }
+      .mobile-nav-toggle { display: flex; }
+      .features-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; }
+      .step:not(:last-child)::after { display: none; }
+      .hero-stats {
+        flex-direction: column;
+        align-items: center;
+        gap: var(--space-md);
+      }
+      .footer .container {
+        flex-direction: column;
+        gap: var(--space-md);
+        text-align: center;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero-mockup { max-width: 260px; }
+      .hero-title { letter-spacing: -0.02em; }
+      .hero-actions { flex-direction: column; width: 100%; }
+      .hero-actions .btn-primary-large,
+      .hero-actions .btn-outline {
+        width: 100%;
+        text-align: center;
+      }
+    }
+
+    /* ===== Animations ===== */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .hero-content { animation: fadeUp 0.8s var(--ease-out) both; }
+    .hero-visual { animation: fadeUp 0.8s var(--ease-out) 0.15s both; }
+    .feature-card:nth-child(1) { animation: fadeUp 0.6s var(--ease-out) 0.1s both; }
+    .feature-card:nth-child(2) { animation: fadeUp 0.6s var(--ease-out) 0.2s both; }
+    .feature-card:nth-child(3) { animation: fadeUp 0.6s var(--ease-out) 0.3s both; }
+  </style>
+</head>
+<body>
+
+  <!-- ===== Header ===== -->
+  <header class="header">
+    <div class="container">
+      <a href="#" class="header-brand">
+        <span class="header-brand-emoji">⏱️</span>
+        KPSS Aşkı
+      </a>
+      <nav class="header-nav" aria-label="Ana navigasyon">
+        <a href="#ozellikler">Özellikler</a>
+        <a href="#nasil-calisir">Nasıl Çalışır?</a>
+        <a href="#yorumlar">Yorumlar</a>
+        <a href="https://kpss-aski.vercel.app" class="btn btn-primary">Uygulamaya Git</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ===== Hero ===== -->
+  <section class="hero" aria-labelledby="hero-heading">
+    <div class="container">
+      <div class="hero-content">
+        <span class="hero-badge">
+          <span>✨</span>
+          Yeni: Oda Bazlı Rekabet
+        </span>
+        <h1 id="hero-heading" class="hero-title">
+          KPSS'yi <span>birlikte</span> bitirelim
+        </h1>
+        <p class="hero-description">
+          Çalışma arkadaşlarınla oda kur, sürelerini takip et,
+          liderlik tablosunda yüksel ve motive kal.
+          KPSS maratonunda yalnız değilsin.
+        </p>
+        <div class="hero-actions">
+          <a href="https://kpss-aski.vercel.app" class="btn btn-primary-large">
+            🚀 Hemen Başla
+          </a>
+          <a href="#nasil-calisir" class="btn btn-outline">
+            Nasıl Çalışır?
+          </a>
+        </div>
+        <div class="hero-stats">
+          <div>
+            <div class="hero-stat-value">3sn</div>
+            <div class="hero-stat-label">Kayıt süresi</div>
+          </div>
+          <div>
+            <div class="hero-stat-value">7/24</div>
+            <div class="hero-stat-label">Canlı sıralama</div>
+          </div>
+          <div>
+            <div class="hero-stat-value">🎯</div>
+            <div class="hero-stat-label">Haftalık reset</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-visual">
+        <div class="hero-mockup">
+          <div class="hero-mockup-inner">
+            <div class="mockup-header">
+              <div class="mockup-header-emoji">⏱️</div>
+              <div class="mockup-header-title">KPSS Aşkı</div>
+              <div class="mockup-header-subtitle">Çalışmaya başla</div>
+            </div>
+            <div class="mockup-input" aria-label="Kullanıcı adı girişi">Kullanıcı adı</div>
+            <div class="mockup-btn" role="button">Başla</div>
+            <div style="text-align:center;font-size:11px;color:var(--color-text-tertiary);margin-bottom:12px;">Bugünün Liderleri</div>
+            <div class="mockup-leaderboard">
+              <div class="mockup-row">
+                <span class="mockup-row-rank" style="color:#FFD700;">🥇</span>
+                <span class="mockup-row-name">Ayşe</span>
+                <div class="mockup-row-bar"><div class="mockup-row-bar-fill" style="width:85%;"></div></div>
+                <span class="mockup-row-time">6s 24d</span>
+              </div>
+              <div class="mockup-row">
+                <span class="mockup-row-rank" style="color:#C0C0C0;">🥈</span>
+                <span class="mockup-row-name">Mehmet</span>
+                <div class="mockup-row-bar"><div class="mockup-row-bar-fill" style="width:65%;"></div></div>
+                <span class="mockup-row-time">4s 12d</span>
+              </div>
+              <div class="mockup-row">
+                <span class="mockup-row-rank" style="color:#CD7F32;">🥉</span>
+                <span class="mockup-row-name">Zeynep</span>
+                <div class="mockup-row-bar"><div class="mockup-row-bar-fill" style="width:50%;"></div></div>
+                <span class="mockup-row-time">3s 45d</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Features ===== -->
+  <section id="ozellikler" class="features" aria-labelledby="features-heading">
+    <div class="container">
+      <div class="features-header">
+        <h2 id="features-heading">Neden KPSS Aşkı?</h2>
+        <p>Ders çalışmayı sosyal bir deneyime dönüştüren özellikler</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">⏱️</div>
+          <h3>Canlı Kronometre</h3>
+          <p>Timestamp-based timer sayesinde uygulama kapansa bile süren doğru kalır. Start, pause, stop — hepsi tek dokunuş.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">🏆</div>
+          <h3>Oda Bazlı Rekabet</h3>
+          <p>Arkadaşlarınla oda kur, her hafta sıfırlanan skorlarla rekabet et. Kim daha çok çalışacak?</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">📊</div>
+          <h3>Anlık Liderlik</h3>
+          <p>Realtime güncellenen sıralama ile odandaki herkesin anlık çalışma süresini gör, motivasyonunu artır.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">🎯</div>
+          <h3>Haftalık Reset</h3>
+          <p>Her Salı sıfırlanan skorlar — geç kalsan bile şansın var. Her hafta yeni bir başlangıç.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">🏅</div>
+          <h3>Milestone Rozetleri</h3>
+          <p>1 saatten 24 saate her dönüm noktasında özel tebrik animasyonları. Küçük başarılar, büyük motivasyon.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">🔓</div>
+          <h3>Sıfır Engelli Giriş</h3>
+          <p>Şifre yok, e-posta yok. Sadece kullanıcı adınla 3 saniyede kayıt ol, hemen çalışmaya başla.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== How It Works ===== -->
+  <section id="nasil-calisir" class="how-it-works" aria-labelledby="how-heading">
+    <div class="container">
+      <h2 id="how-heading">Nasıl Çalışır?</h2>
+      <div class="steps">
+        <div class="step">
+          <h3>Odaya Katıl</h3>
+          <p>Kullanıcı adınla giriş yap, mevcut bir odaya katıl veya arkadaşların için yeni oda oluştur.</p>
+        </div>
+        <div class="step">
+          <h3>Çalışmaya Başla</h3>
+          <p>Kronometreyi başlat, ders çalış. Süren otomatik olarak sana ve odana yazılır.</p>
+        </div>
+        <div class="step">
+          <h3>Rekabet Et</h3>
+          <p>Liderlik tablosunda yüksel, milestone'ları topla, her hafta yeniden başla.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Testimonial ===== -->
+  <section id="yorumlar" class="testimonial" aria-label="Kullanıcı yorumu">
+    <div class="container">
+      <div class="testimonial-card">
+        <p class="testimonial-quote">
+          KPSS Aşkı olmasa bu kadar düzenli çalışamazdım.
+          Arkadaşlarımla odada rekabet edince bir anda 4 saat çalıştığımı fark ediyorum.
+        </p>
+        <div class="testimonial-author">— Elif K.</div>
+        <div class="testimonial-role">KPSS 2026 Hazırlık</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CTA ===== -->
+  <section class="cta" aria-labelledby="cta-heading">
+    <div class="container">
+      <h2 id="cta-heading">Çalışmaya hazır mısın?</h2>
+      <p>3 saniyede kayıt ol, arkadaşlarını davet et, motive ol.</p>
+      <div class="cta-actions">
+        <a href="https://kpss-aski.vercel.app" class="btn btn-primary-large">
+          🚀 Ücretsiz Başla
+        </a>
+        <a href="#" class="btn btn-outline" onclick="alert('GitHub — yakında.')">
+          ⭐ Star Ver
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Footer ===== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-brand">
+        <span>⏱️</span>
+        KPSS Aşkı &copy; 2026
+      </div>
+      <div class="footer-links">
+        <a href="#">Gizlilik</a>
+        <a href="#">Koşullar</a>
+        <a href="#">İletişim</a>
+        <a href="https://github.com/bigbrother/kpss-aski">GitHub</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

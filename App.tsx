@@ -1,6 +1,6 @@
 /**
  * KPSS Aşkı - Ana Uygulama (Apple-minimalist)
- * v3: Oda Sistemi eklendi
+ * v8: Temiz routing, dark mode hazırlığı
  */
 import React, { useEffect } from 'react';
 import {
@@ -9,14 +9,16 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
+  useColorScheme,
 } from 'react-native';
 import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import * as Linking from 'expo-linking';
-import { Colors } from './src/theme/colors';
+import { ColorsLight, ColorsDark } from './src/theme/colors';
 import { Fonts, FontSize } from './src/theme/typography';
 import { useAuthStore } from './src/stores/authStore';
 import { useFontLoader } from './src/hooks/useFontLoader';
+import { useColorSchemeStore } from './src/stores/colorSchemeStore';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { RoomSelectionScreen } from './src/screens/RoomSelectionScreen';
 import { MainScreen } from './src/screens/MainScreen';
@@ -30,27 +32,33 @@ export default function App() {
   const isLoading = useAuthStore((s) => s.isLoading);
   const profile = useAuthStore((s) => s.profile);
   const login = useAuthStore((s) => s.login);
-  const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const { fontsLoaded } = useFontLoader();
+  const loadColorScheme = useColorSchemeStore((s) => s.loadColorScheme);
+
+  const systemScheme = useColorScheme();
+  const userPreference = useColorSchemeStore((s) => s.colorScheme);
+  const effectiveScheme =
+    userPreference === 'system' ? systemScheme : userPreference;
+  const Colors = effectiveScheme === 'dark' ? ColorsDark : ColorsLight;
 
   useEffect(() => {
     login();
+    loadColorScheme();
   }, []);
 
   if (!fontsLoaded || isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: Colors.systemBackground }]}>
         <ActivityIndicator size="large" color={Colors.systemBlue} />
       </View>
     );
   }
 
-  // Kullanıcı giriş yapmamışsa
   if (!isAuthenticated) {
     return (
       <>
         <StatusBar
-          barStyle="dark-content"
+          barStyle={effectiveScheme === 'dark' ? 'light-content' : 'dark-content'}
           backgroundColor={Colors.systemBackground}
         />
         <AuthScreen />
@@ -58,12 +66,11 @@ export default function App() {
     );
   }
 
-  // Kullanıcı giriş yapmış ama oda seçmemişse
   if (!profile?.current_room_id) {
     return (
       <>
         <StatusBar
-          barStyle="dark-content"
+          barStyle={effectiveScheme === 'dark' ? 'light-content' : 'dark-content'}
           backgroundColor={Colors.systemBackground}
         />
         <RoomSelectionScreen />
@@ -71,11 +78,10 @@ export default function App() {
     );
   }
 
-  // Kullanıcı giriş yapmış ve oda seçmiş → Ana uygulama
   return (
     <>
       <StatusBar
-        barStyle="dark-content"
+        barStyle={effectiveScheme === 'dark' ? 'light-content' : 'dark-content'}
         backgroundColor={Colors.systemBackground}
       />
       <NavigationContainer
@@ -151,6 +157,5 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.systemBackground,
   },
 });
