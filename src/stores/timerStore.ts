@@ -221,9 +221,16 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                     } as any)
                     .eq('id', user.id);
 
+                console.log('[stopAndSubmit] yazma öncesi:', JSON.stringify({
+                    weekly: state.weeklyStudySeconds,
+                    total: state.totalStudySeconds,
+                    roomId: profile?.current_room_id,
+                    userId: user.id,
+                }));
+
                 // Oda bazlı süreleri room_members'a yaz
                 if (profile?.current_room_id) {
-                    await supabase
+                    const { error: roomMemberError } = await supabase
                         .from('room_members')
                         .update({
                             weekly_study_seconds: state.weeklyStudySeconds,
@@ -231,6 +238,13 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                         } as any)
                         .eq('user_id', user.id)
                         .eq('room_id', profile.current_room_id);
+                    if (roomMemberError) {
+                        console.error('[stopAndSubmit] room_members update hatası:', roomMemberError);
+                    } else {
+                        console.log('[stopAndSubmit] room_members güncellendi ✅');
+                    }
+                } else {
+                    console.log('[stopAndSubmit] ⚠️ current_room_id YOK, room_members atlandı!');
                 }
 
                 // Auth store'daki profili yenile
@@ -242,7 +256,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                     await useLeaderboardStore.getState().fetchLeaderboard(profile.current_room_id);
                 }
             } catch (err) {
-                // Offline - sessiz
+                console.error('[stopAndSubmit] HATA:', err);
             }
         }
 
