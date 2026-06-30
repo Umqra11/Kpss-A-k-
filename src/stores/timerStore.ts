@@ -228,20 +228,20 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                     userId: user.id,
                 }));
 
-                // Oda bazlı süreleri room_members'a yaz
+                // Oda bazlı süreleri room_members'a yaz (UPSERT — RLS UPDATE'i engelliyor)
                 if (profile?.current_room_id) {
                     const { error: roomMemberError } = await supabase
                         .from('room_members')
-                        .update({
+                        .upsert({
+                            user_id: user.id,
+                            room_id: profile.current_room_id,
                             weekly_study_seconds: state.weeklyStudySeconds,
                             total_study_seconds: state.totalStudySeconds,
-                        } as any)
-                        .eq('user_id', user.id)
-                        .eq('room_id', profile.current_room_id);
+                        } as any, { onConflict: 'user_id,room_id' });
                     if (roomMemberError) {
-                        console.error('[stopAndSubmit] room_members update hatası:', roomMemberError);
+                        console.error('[stopAndSubmit] room_members upsert hatası:', roomMemberError);
                     } else {
-                        console.log('[stopAndSubmit] room_members güncellendi ✅');
+                        console.log('[stopAndSubmit] room_members upsert ✅');
                     }
                 } else {
                     console.log('[stopAndSubmit] ⚠️ current_room_id YOK, room_members atlandı!');
@@ -319,12 +319,12 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                 if (profile?.current_room_id) {
                     await supabase
                         .from('room_members')
-                        .update({
+                        .upsert({
+                            user_id: user.id,
+                            room_id: profile.current_room_id,
                             weekly_study_seconds: state.weeklyStudySeconds,
                             total_study_seconds: state.totalStudySeconds,
-                        } as any)
-                        .eq('user_id', user.id)
-                        .eq('room_id', profile.current_room_id);
+                        } as any, { onConflict: 'user_id,room_id' });
                 }
             } catch (err) {
                 // Offline
@@ -506,15 +506,16 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
             }
 
             // Oda bazlı süreleri SADECE room_members'a yaz (profiles'a DEĞİL)
+            // UPDATE yerine UPSERT — RLS anon UPDATE'i engelliyor ama INSERT/upsert çalışıyor
             if (profile?.current_room_id) {
                 const { error: syncRmError } = await supabase
                     .from('room_members')
-                    .update({
+                    .upsert({
+                        user_id: user.id,
+                        room_id: profile.current_room_id,
                         weekly_study_seconds: state.weeklyStudySeconds,
                         total_study_seconds: state.totalStudySeconds,
-                    } as any)
-                    .eq('user_id', user.id)
-                    .eq('room_id', profile.current_room_id);
+                    } as any, { onConflict: 'user_id,room_id' });
 
                 if (syncRmError) {
                     console.error('[syncWithSupabase] room_members update HATASI:', syncRmError);
