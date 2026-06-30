@@ -223,7 +223,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
 
                 // Oda bazlı süreleri room_members'a yaz
                 if (profile?.current_room_id) {
-                    await supabase
+                    const { error: stopUpdateError } = await supabase
                         .from('room_members')
                         .update({
                             weekly_study_seconds: state.weeklyStudySeconds,
@@ -231,6 +231,11 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                         } as any)
                         .eq('user_id', user.id)
                         .eq('room_id', profile.current_room_id);
+                    if (stopUpdateError) {
+                        console.error('[stopAndSubmit] room_members UPDATE HATASI:', stopUpdateError);
+                    } else {
+                        console.log('[stopAndSubmit] room_members güncellendi ✅');
+                    }
                 }
 
                 // Auth store'daki profili yenile
@@ -493,7 +498,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
 
             // Oda bazlı süreleri room_members'a yaz (profiles'a DEĞİL)
             if (profile?.current_room_id) {
-                await supabase
+                const { error: syncRmError } = await supabase
                     .from('room_members')
                     .update({
                         weekly_study_seconds: state.weeklyStudySeconds,
@@ -502,12 +507,16 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                     .eq('user_id', user.id)
                     .eq('room_id', profile.current_room_id);
 
-                // Base değerleri güncelle ki sonraki computeStudyStats doğru toplamı versin
-                set({
-                    _roomBaseWeeklySeconds: state.weeklyStudySeconds,
-                    _roomBaseTotalSeconds: state.totalStudySeconds,
-                    _postResetAccumulatedMs: elapsedMs,
-                } as any);
+                if (syncRmError) {
+                    console.error('[syncWithSupabase] room_members UPDATE HATASI:', syncRmError);
+                } else {
+                    // Base değerleri güncelle ki sonraki computeStudyStats doğru toplamı versin
+                    set({
+                        _roomBaseWeeklySeconds: state.weeklyStudySeconds,
+                        _roomBaseTotalSeconds: state.totalStudySeconds,
+                        _postResetAccumulatedMs: elapsedMs,
+                    } as any);
+                }
             }
 
             await useAuthStore.getState().refreshProfile();
@@ -567,16 +576,29 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         const roomBaseWeekly = get()._roomBaseWeeklySeconds ?? 0;
         const roomBaseTotal = get()._roomBaseTotalSeconds ?? 0;
         const postResetAccumulated = get()._postResetAccumulatedMs ?? 0;
+        const status = get().status;
 
         // Bu oturumda toplam geçen süre
         const elapsedSeconds = Math.floor(elapsedMs / 1000);
         // Hafta sınırı sonrası efektif süre (reset anına kadar olan kısım hariç)
-        const effectiveElapsedMs = elapsedMs - postResetAccumulated;
+        const effectiveElapsedMs = Math.max(0, elapsedMs - postResetAccumulated);
         const effectiveElapsedSeconds = Math.floor(effectiveElapsedMs / 1000);
 
         // Oda bazlı: base (DB'den okunan) + bu oturumun tamamı
         const weekly = roomBaseWeekly + effectiveElapsedSeconds;
         const total = roomBaseTotal + elapsedSeconds;
+
+        console.log('[computeStudyStats]', JSON.stringify({
+            status,
+            elapsedS: elapsedSeconds,
+            effectiveS: effectiveElapsedSeconds,
+            roomBaseW: roomBaseWeekly,
+            roomBaseT: roomBaseTotal,
+            postResetMs: postResetAccumulated,
+            postResetS: Math.floor(postResetAccumulated / 1000),
+            weekly,
+            total,
+        }));
 
         set({
             dailyStudySeconds: weekly,
