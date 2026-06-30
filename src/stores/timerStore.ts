@@ -1,10 +1,10 @@
 /**
- * KPSS Aşkı - Kronometre Store'u
- * Timestamp-based yaklaşım: Uygulama kill edilse bile doğru süre hesaplanır
- * 
- * v2: stopAndSubmitTimer, online presence, periyodik sync, AppState handler
- * v4: Hafta sınırı tespiti - Salı 00:00'da oturumu böl, süreler doğru haftaya yazılsın
- */
+* KPSS Aşkı - Kronometre Store'u
+* Timestamp-based yaklaşım: Uygulama kill edilse bile doğru süre hesaplanır
+* 
+* v2: stopAndSubmitTimer, online presence, periyodik sync, AppState handler
+* v4: Hafta sınırı tespiti - Salı 00:00'da oturumu böl, süreler doğru haftaya yazılsın
+*/
 
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -221,30 +221,16 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                     } as any)
                     .eq('id', user.id);
 
-                console.log('[stopAndSubmit] yazma öncesi:', JSON.stringify({
-                    weekly: state.weeklyStudySeconds,
-                    total: state.totalStudySeconds,
-                    roomId: profile?.current_room_id,
-                    userId: user.id,
-                }));
-
-                // Oda bazlı süreleri room_members'a yaz (UPSERT — RLS UPDATE'i engelliyor)
+                // Oda bazlı süreleri room_members'a yaz
                 if (profile?.current_room_id) {
-                    const { error: roomMemberError } = await supabase
+                    await supabase
                         .from('room_members')
-                        .upsert({
-                            user_id: user.id,
-                            room_id: profile.current_room_id,
+                        .update({
                             weekly_study_seconds: state.weeklyStudySeconds,
                             total_study_seconds: state.totalStudySeconds,
-                        } as any, { onConflict: 'user_id,room_id' });
-                    if (roomMemberError) {
-                        console.error('[stopAndSubmit] room_members upsert hatası:', roomMemberError);
-                    } else {
-                        console.log('[stopAndSubmit] room_members upsert ✅');
-                    }
-                } else {
-                    console.log('[stopAndSubmit] ⚠️ current_room_id YOK, room_members atlandı!');
+                        } as any)
+                        .eq('user_id', user.id)
+                        .eq('room_id', profile.current_room_id);
                 }
 
                 // Auth store'daki profili yenile
@@ -256,7 +242,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                     await useLeaderboardStore.getState().fetchLeaderboard(profile.current_room_id);
                 }
             } catch (err) {
-                console.error('[stopAndSubmit] HATA:', err);
+                // Offline - sessiz
             }
         }
 
@@ -319,12 +305,12 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                 if (profile?.current_room_id) {
                     await supabase
                         .from('room_members')
-                        .upsert({
-                            user_id: user.id,
-                            room_id: profile.current_room_id,
+                        .update({
                             weekly_study_seconds: state.weeklyStudySeconds,
                             total_study_seconds: state.totalStudySeconds,
-                        } as any, { onConflict: 'user_id,room_id' });
+                        } as any)
+                        .eq('user_id', user.id)
+                        .eq('room_id', profile.current_room_id);
                 }
             } catch (err) {
                 // Offline
@@ -505,35 +491,23 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                     .eq('id', sessions[0].id);
             }
 
-            // Oda bazlı süreleri SADECE room_members'a yaz (profiles'a DEĞİL)
-            // UPDATE yerine UPSERT — RLS anon UPDATE'i engelliyor ama INSERT/upsert çalışıyor
+            // Oda bazlı süreleri room_members'a yaz (profiles'a DEĞİL)
             if (profile?.current_room_id) {
-                const { error: syncRmError } = await supabase
+                await supabase
                     .from('room_members')
-                    .upsert({
-                        user_id: user.id,
-                        room_id: profile.current_room_id,
+                    .update({
                         weekly_study_seconds: state.weeklyStudySeconds,
                         total_study_seconds: state.totalStudySeconds,
-                    } as any, { onConflict: 'user_id,room_id' });
+                    } as any)
+                    .eq('user_id', user.id)
+                    .eq('room_id', profile.current_room_id);
 
-                if (syncRmError) {
-                    console.error('[syncWithSupabase] room_members update HATASI:', syncRmError);
-                } else {
-                    console.log('[syncWithSupabase] room_members güncellendi ✅, base güncelleniyor:', JSON.stringify({
-                        baseW: state.weeklyStudySeconds,
-                        baseT: state.totalStudySeconds,
-                        elapsedMs,
-                    }));
-                    // Base değerleri güncelle ki sonraki computeStudyStats doğru toplamı versin
-                    set({
-                        _roomBaseWeeklySeconds: state.weeklyStudySeconds,
-                        _roomBaseTotalSeconds: state.totalStudySeconds,
-                        _postResetAccumulatedMs: elapsedMs,
-                    } as any);
-                }
-            } else {
-                console.log('[syncWithSupabase] ⚠️ current_room_id YOK, atlandı');
+                // Base değerleri güncelle ki sonraki computeStudyStats doğru toplamı versin
+                set({
+                    _roomBaseWeeklySeconds: state.weeklyStudySeconds,
+                    _roomBaseTotalSeconds: state.totalStudySeconds,
+                    _postResetAccumulatedMs: elapsedMs,
+                } as any);
             }
 
             await useAuthStore.getState().refreshProfile();
