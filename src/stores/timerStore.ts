@@ -515,6 +515,13 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                     } as any)
                     .eq('user_id', user.id)
                     .eq('room_id', profile.current_room_id);
+
+                // Base değerleri güncelle ki sonraki computeStudyStats doğru toplamı versin
+                set({
+                    _roomBaseWeeklySeconds: state.weeklyStudySeconds,
+                    _roomBaseTotalSeconds: state.totalStudySeconds,
+                    _postResetAccumulatedMs: state._lastSyncedElapsedMs ?? 0,
+                } as any);
             }
 
             await useAuthStore.getState().refreshProfile();
