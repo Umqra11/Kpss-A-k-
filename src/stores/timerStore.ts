@@ -507,7 +507,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
 
             // Oda bazlı süreleri SADECE room_members'a yaz (profiles'a DEĞİL)
             if (profile?.current_room_id) {
-                await supabase
+                const { error: syncRmError } = await supabase
                     .from('room_members')
                     .update({
                         weekly_study_seconds: state.weeklyStudySeconds,
@@ -516,12 +516,23 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
                     .eq('user_id', user.id)
                     .eq('room_id', profile.current_room_id);
 
-                // Base değerleri güncelle ki sonraki computeStudyStats doğru toplamı versin
-                set({
-                    _roomBaseWeeklySeconds: state.weeklyStudySeconds,
-                    _roomBaseTotalSeconds: state.totalStudySeconds,
-                    _postResetAccumulatedMs: state._lastSyncedElapsedMs ?? 0,
-                } as any);
+                if (syncRmError) {
+                    console.error('[syncWithSupabase] room_members update HATASI:', syncRmError);
+                } else {
+                    console.log('[syncWithSupabase] room_members güncellendi ✅, base güncelleniyor:', JSON.stringify({
+                        baseW: state.weeklyStudySeconds,
+                        baseT: state.totalStudySeconds,
+                        elapsedMs,
+                    }));
+                    // Base değerleri güncelle ki sonraki computeStudyStats doğru toplamı versin
+                    set({
+                        _roomBaseWeeklySeconds: state.weeklyStudySeconds,
+                        _roomBaseTotalSeconds: state.totalStudySeconds,
+                        _postResetAccumulatedMs: elapsedMs,
+                    } as any);
+                }
+            } else {
+                console.log('[syncWithSupabase] ⚠️ current_room_id YOK, atlandı');
             }
 
             await useAuthStore.getState().refreshProfile();
